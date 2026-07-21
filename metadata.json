@@ -1,0 +1,6 @@
+{
+  "name": "Smart Auto Reply",
+  "description": "A rule-based auto reply application for managing responses automatically.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

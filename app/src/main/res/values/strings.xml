@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Smart Auto Reply</string>
+    <string name="accessibility_description">Enables Smart Auto Reply to scan messages and send automatic responses on supported messaging apps.</string>
+</resources>
