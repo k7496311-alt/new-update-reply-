@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
 
+import android.widget.Toast
+
 /**
  * Accessibility service that detects message content or window changes for automated actions.
  */
@@ -29,7 +31,12 @@ class AutoReplyAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        Log.d(TAG, "Accessibility Service successfully connected and stored")
+        Log.e("ACCESSIBILITY", "✅ SERVICE CONNECTED SUCCESSFULLY")
+        try {
+            Toast.makeText(this, "Accessibility Service Connected!", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show Toast: ${e.message}")
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
