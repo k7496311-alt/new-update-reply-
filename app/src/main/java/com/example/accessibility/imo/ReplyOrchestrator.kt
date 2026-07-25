@@ -68,8 +68,8 @@ class ReplyOrchestrator(
     suspend fun onNotificationReceived(packageName: String, sender: String, messageText: String): Boolean = withContext(dispatcher) {
         AccessibilityLogger.i(TAG, "Notification received from '$sender' on app '$packageName'. Message: '$messageText'")
 
-        // 1. Check if app is IMO/IMO Lite
-        if (packageName != IMONodeScanner.PACKAGE_IMO && packageName != IMONodeScanner.PACKAGE_IMO_LITE) {
+        // 1. Check if app is IMO / IMO Beta / IMO HD / IMO Lite
+        if (!IMONodeScanner.isImoPackage(packageName)) {
             AccessibilityLogger.d(TAG, "App '$packageName' is not supported. Ignoring notification.")
             return@withContext false
         }
@@ -195,7 +195,7 @@ class ReplyOrchestrator(
 
                     // Step 8a: Open target chat screen in IMO
                     stateMachine.transitionTo(OrchestratorState.OPENING_CHAT)
-                    val chatOpened = uiManager.getActionPerformer().openChatByContactName(sender)
+                    val chatOpened = uiManager.getActionPerformer().openChatByContactName(sender, packageName)
                     if (!chatOpened) {
                         throw IllegalStateException("Failed to navigate to target chat with: $sender")
                     }

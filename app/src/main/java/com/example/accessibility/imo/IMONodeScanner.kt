@@ -57,6 +57,12 @@ class IMONodeScanner {
         const val PACKAGE_IMO = "com.imo.android.imoim"
         const val PACKAGE_IMO_LITE = "com.imo.android.imoimlite"
 
+        fun isImoPackage(packageName: String): Boolean {
+            if (packageName.isBlank()) return false
+            return packageName.startsWith("com.imo.android", ignoreCase = true) ||
+                   packageName.contains("imo", ignoreCase = true)
+        }
+
         // View IDs (with package-relative suffixes)
         private val CHAT_LIST_CONTACT_NAME_IDS = listOf(
             "com.imo.android.imoim:id/name",

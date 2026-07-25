@@ -48,16 +48,44 @@ class IMOActionPerformer(
     }
 
     /**
-     * Attempts to locate a chat matching [contactName] and click to open it.
-     * Implements scrolling fallback traversal to find off-screen contacts.
+     * Helper to launch an app package directly into the foreground.
      */
-    suspend fun openChatByContactName(contactName: String): Boolean {
-        AccessibilityLogger.i(TAG, "Opening chat for contact: '$contactName'")
+    fun launchAppPackage(packageName: String): Boolean {
+        if (packageName.isBlank()) return false
+        return try {
+            val pm = context.packageManager
+            val intent = pm.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                context.startActivity(intent)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            AccessibilityLogger.e(TAG, "Failed to launch package '$packageName'", e)
+            false
+        }
+    }
+
+    /**
+     * Attempts to locate a chat matching [contactName] and click to open it.
+     * Implements app launching and scrolling fallback traversal to find off-screen contacts.
+     */
+    suspend fun openChatByContactName(contactName: String, targetPackageName: String = ""): Boolean {
+        AccessibilityLogger.i(TAG, "Opening chat for contact: '$contactName' (Pkg: '$targetPackageName')")
         
         return executeActionWithRetry("openChatByContactName") {
             if (!isOnChatListScreen()) {
-                AccessibilityLogger.w(TAG, "Not on chat list screen. Attempting error recovery...")
-                recoverToChatListScreen()
+                if (targetPackageName.isNotBlank()) {
+                    AccessibilityLogger.i(TAG, "Target app not on screen. Launching: $targetPackageName")
+                    launchAppPackage(targetPackageName)
+                    delay(2500L) // Wait for app launch
+                }
+                if (!isOnChatListScreen()) {
+                    AccessibilityLogger.w(TAG, "Not on chat list screen. Attempting error recovery...")
+                    recoverToChatListScreen()
+                }
             }
 
             var attempts = 0
