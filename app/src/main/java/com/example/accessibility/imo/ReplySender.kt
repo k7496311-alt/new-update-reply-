@@ -184,17 +184,10 @@ class ReplySender(
     }
 
     private suspend fun typeMessageHumanLike(inputNode: AccessibilityNodeInfo, text: String): Boolean {
-        val sb = StringBuilder()
-        for (char in text) {
-            if (checkUserInterference()) return false
-            sb.append(char)
-            val success = AccessibilityActionHelper.safeInputText(inputNode, sb.toString())
-            if (!success) return false
-            // Random typing delay (50-150ms per character)
-            val delayTime = 50 + random.nextInt(101)
-            delay(delayTime.toLong())
-        }
-        return true
+        if (checkUserInterference()) return false
+        val success = AccessibilityActionHelper.safeInputText(inputNode, text)
+        delay(150L) // Brief delay for IME input field sync
+        return success
     }
 
     private suspend fun verifyOutgoingMessageSent(replyText: String): Boolean {

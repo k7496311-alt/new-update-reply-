@@ -60,6 +60,15 @@ class NotificationListener : NotificationListenerService() {
                 // 1. Parse the incoming notification
                 val notificationItem = parser.parse(sbn) ?: return@launch
 
+                // Cache Notification ContentIntent for direct one-click navigation
+                sbn.notification?.contentIntent?.let { intent ->
+                    NotificationPendingIntentCache.put(
+                        notificationItem.packageName,
+                        notificationItem.sender,
+                        intent
+                    )
+                }
+
                 Log.d(TAG, "Parsed notification successfully: ${notificationItem.sender} - ${notificationItem.message}")
                 AppLogger.info(
                     LogCategory.NOTIFICATION,

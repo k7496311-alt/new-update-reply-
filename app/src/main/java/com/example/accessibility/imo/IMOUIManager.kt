@@ -99,4 +99,9 @@ class IMOUIManager(
      * Proxy scanner accesses.
      */
     fun getNodeScanner(): IMONodeScanner = nodeScanner
+
+    /**
+     * Proxy accessibility manager accesses.
+     */
+    fun getAccessibilityManager(): AccessibilityManager = accessibilityManager
 }

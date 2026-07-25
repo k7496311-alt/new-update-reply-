@@ -7,6 +7,7 @@ import com.example.accessibility.AutoReplyAccessibilityService
 import com.example.model.MessageType
 import com.example.model.QueueItem
 import com.example.model.QueueStatus
+import com.example.notification.NotificationPendingIntentCache
 import com.example.queue.QueueEngine
 import com.example.reply.ReplyGenerationStatus
 import com.example.reply.ReplyGenerator
@@ -14,13 +15,13 @@ import com.example.rule.RuleEngine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
  * The master coordinator that integrates ALL modules into a complete, production-grade auto-reply flow.
- * Handles incoming notifications, enqueuing, priority execution, voice transcription, and reliable dispatching.
+ * Handles incoming notifications, direct notification clicking, media/call filtering, voice transcription,
+ * rule matching, and returning the device to normal state when processing completes.
  */
 class ReplyOrchestrator(
     private val context: Context,
@@ -88,13 +89,19 @@ class ReplyOrchestrator(
             return@withContext false
         }
 
-        // 4. Match rule or fallback to find the planned response
+        // 4. Quick check: Is notification text explicit media / missed call / link?
+        if (IMOMessageClassifier.isMediaOrCallOrLink(messageText)) {
+            AccessibilityLogger.w(TAG, "Notification message '$messageText' is media/call/link. Skipping enqueue.")
+            return@withContext false
+        }
+
+        // 5. Match rule or fallback to find the planned response
         val activeRules = orchestratorRepository.getActiveRules()
         val bestMatchedRule = ruleEngine.findBestMatchingRule(messageText, activeRules)?.rule
         val ruleId = bestMatchedRule?.id ?: 0L
         val replyText = bestMatchedRule?.replyText ?: ""
 
-        // 5. Enqueue into the Queue Management System
+        // 6. Enqueue into the Queue Management System
         stateMachine.transitionTo(OrchestratorState.QUEUED)
         val priority = bestMatchedRule?.priority ?: 0
         val delayTime = bestMatchedRule?.replyDelayMillis ?: 0L
@@ -193,57 +200,88 @@ class ReplyOrchestrator(
                 // Enforce safety constraint: Max processing time per message = 30 seconds
                 withTimeout(MAX_PROCESSING_TIME_MS) {
 
-                    // Step 8a: Open target chat screen in IMO
+                    // Step 1: Pre-check if message is media / missed call / link
+                    if (IMOMessageClassifier.isMediaOrCallOrLink(originalText)) {
+                        stateMachine.transitionTo(OrchestratorState.SKIPPED)
+                        AccessibilityLogger.w(TAG, "Original message '$originalText' is media/call/link. Skipping.")
+                        orchestratorRepository.updateQueueStatus(sender, packageName, QueueStatus.SKIPPED)
+                        return@withTimeout
+                    }
+
+                    // Step 2: Open target chat screen directly via Notification PendingIntent or Contact Name
                     stateMachine.transitionTo(OrchestratorState.OPENING_CHAT)
-                    val chatOpened = uiManager.getActionPerformer().openChatByContactName(sender, packageName)
+                    var chatOpened = false
+
+                    val cachedPendingIntent = NotificationPendingIntentCache.get(packageName, sender)
+                    if (cachedPendingIntent != null) {
+                        try {
+                            AccessibilityLogger.i(TAG, "Clicking notification PendingIntent directly for '$sender'...")
+                            cachedPendingIntent.send()
+                            delay(1500L) // UI launch stabilization
+                            chatOpened = uiManager.getActionPerformer().isOnChatScreen() || uiManager.getActionPerformer().isOnChatListScreen()
+                        } catch (e: Exception) {
+                            AccessibilityLogger.e(TAG, "PendingIntent click failed for '$sender', falling back to manual open", e)
+                        }
+                    }
+
+                    if (!chatOpened) {
+                        chatOpened = uiManager.getActionPerformer().openChatByContactName(sender, packageName)
+                    }
+
                     if (!chatOpened) {
                         throw IllegalStateException("Failed to navigate to target chat with: $sender")
                     }
                     delay(500L) // UI stabilization delay
 
-                    // Step 8b: Analyze the last message content in the conversation thread
+                    // Step 3: Analyze the last message content in the conversation thread
                     stateMachine.transitionTo(OrchestratorState.ANALYZING_MESSAGE)
                     val lastMessageType = uiManager.getActionPerformer().detectLastMessageType()
 
                     var resolvedText = originalText
 
-                    // Step 8c: If the message type is VOICE_MESSAGE -> click "A" and transcribe
-                    if (lastMessageType == MessageType.VOICE_MESSAGE) {
+                    // Step 4: Check Voice Message vs Media vs Text
+                    if (IMOMessageClassifier.isVoiceMessage(originalText, lastMessageType)) {
                         stateMachine.transitionTo(OrchestratorState.TRANSCRIBING_VOICE)
                         val transcriptText = uiManager.transcribeLastVoiceMessage()
-                        if (transcriptText != null) {
+                        if (!transcriptText.isNullOrBlank()) {
                             resolvedText = transcriptText
                             AccessibilityLogger.i(TAG, "Voice transcription successful: '$resolvedText'")
                         } else {
-                            AccessibilityLogger.w(TAG, "Voice transcription returned empty. Relying on original message text.")
+                            AccessibilityLogger.w(TAG, "Voice transcription failed or returned empty. Skipping voice message.")
+                            stateMachine.transitionTo(OrchestratorState.SKIPPED)
+                            orchestratorRepository.updateQueueStatus(sender, packageName, QueueStatus.SKIPPED)
+                            uiManager.getActionPerformer().clickBackButton()
+                            return@withTimeout
                         }
-                    } else if (lastMessageType == MessageType.IMAGE ||
-                               lastMessageType == MessageType.STICKER ||
-                               lastMessageType == MessageType.VIDEO) {
-                        // Step 8d: If image/sticker/video -> skip
-                        stateMachine.transitionTo(OrchestratorState.SKIPPED)
-                        AccessibilityLogger.w(TAG, "Unsupported media message detected ($lastMessageType). Skipping reply.")
+                    }
 
-                        val skippedItem = queueItem.copy(
-                            status = QueueStatus.SKIPPED,
-                            errorMessage = "Skipped unsupported media: $lastMessageType",
-                            updatedAt = System.currentTimeMillis()
-                        )
+                    // Step 5: Verify resolved text is not media/link/call
+                    if (IMOMessageClassifier.isMediaOrCallOrLink(resolvedText, lastMessageType)) {
+                        stateMachine.transitionTo(OrchestratorState.SKIPPED)
+                        AccessibilityLogger.w(TAG, "Unsupported media/call/link detected ($resolvedText / $lastMessageType). Skipping reply.")
                         orchestratorRepository.updateQueueStatus(sender, packageName, QueueStatus.SKIPPED)
                         uiManager.getActionPerformer().clickBackButton()
                         return@withTimeout
                     }
 
-                    // Step 8f: Match rules using Rule Engine
+                    // Step 6: Match rules using Rule Engine
                     stateMachine.transitionTo(OrchestratorState.MATCHING_RULES)
                     val activeRules = orchestratorRepository.getActiveRules()
                     val rule = ruleEngine.findMatchingRule(resolvedText, activeRules)
 
-                    // Step 8g: Generate reply using Reply Generator
+                    if (rule == null) {
+                        stateMachine.transitionTo(OrchestratorState.SKIPPED)
+                        AccessibilityLogger.w(TAG, "No rule matched for text '$resolvedText'. Skipping reply.")
+                        orchestratorRepository.updateQueueStatus(sender, packageName, QueueStatus.SKIPPED)
+                        uiManager.getActionPerformer().clickBackButton()
+                        return@withTimeout
+                    }
+
+                    // Step 7: Generate reply using Reply Generator
                     stateMachine.transitionTo(OrchestratorState.GENERATING_REPLY)
                     val finalReply = replyGenerator.generateReply(rule, sender, resolvedText)
 
-                    // Step 8h: Check cooldowns and daily limit states
+                    // Step 8: Check cooldowns and daily limit states
                     stateMachine.transitionTo(OrchestratorState.CHECKING_COOLDOWN)
                     if (finalReply.status == ReplyGenerationStatus.COOLDOWN ||
                         finalReply.status == ReplyGenerationStatus.LIMIT_EXCEEDED ||
@@ -252,35 +290,27 @@ class ReplyOrchestrator(
                         stateMachine.transitionTo(OrchestratorState.SKIPPED)
                         AccessibilityLogger.w(TAG, "Reply skipped: ${finalReply.status}. Reason: ${finalReply.reason}")
 
-                        val skippedItem = queueItem.copy(
-                            status = QueueStatus.SKIPPED,
-                            errorMessage = finalReply.reason,
-                            updatedAt = System.currentTimeMillis()
-                        )
                         orchestratorRepository.updateQueueStatus(sender, packageName, QueueStatus.SKIPPED)
                         uiManager.getActionPerformer().clickBackButton()
                         return@withTimeout
                     }
 
-                    // Step 8j: Send reply through low-level ReplySender (contains human typing animation)
+                    // Step 9: Send reply through low-level ReplySender
                     stateMachine.transitionTo(OrchestratorState.SENDING_REPLY)
                     val sendResult = replySender.sendReply(sender, finalReply.replyText)
 
-                    // Step 8k: Verify outgoing bubble is sent
+                    // Step 10: Verify outgoing bubble is sent
                     stateMachine.transitionTo(OrchestratorState.VERIFYING_SENT)
                     when (sendResult) {
                         is SendResult.Success -> {
-                            // Step 8l, m, n: Finalize history, conversation tracking, and queue completion
                             stateMachine.transitionTo(OrchestratorState.COMPLETING)
-                            AccessibilityLogger.i(TAG, "Successfully dispatched and verified auto reply to '$sender'")
+                            AccessibilityLogger.i(TAG, "Successfully dispatched auto reply to '$sender'")
 
-                            // Update conversation states
+                            // Update conversation states & logs
                             orchestratorRepository.recordOutgoingReply(sender, packageName, finalReply.replyText)
-
-                            // Save to historical logs
                             orchestratorRepository.logHistory(
-                                ruleId = rule?.id ?: 0L,
-                                ruleName = rule?.name ?: "Default Reply",
+                                ruleId = rule.id,
+                                ruleName = rule.name,
                                 senderName = sender,
                                 incomingMessage = resolvedText,
                                 replyText = finalReply.replyText,
@@ -291,8 +321,6 @@ class ReplyOrchestrator(
                             // Terminate queue item status
                             queueEngine.completeItem(itemId)
                             orchestratorRepository.updateQueueStatus(sender, packageName, QueueStatus.SENT)
-
-                            // Reset consecutive failures
                             consecutiveFailures = 0
                         }
                         is SendResult.Cancelled -> {
@@ -308,8 +336,9 @@ class ReplyOrchestrator(
                         }
                     }
 
-                    // Clean up and return to Chat List Screen
+                    // Clean up: click back button
                     uiManager.getActionPerformer().clickBackButton()
+                    NotificationPendingIntentCache.remove(packageName, sender)
                     stateMachine.transitionTo(OrchestratorState.IDLE)
                 }
             } catch (e: TimeoutCancellationException) {
@@ -328,6 +357,14 @@ class ReplyOrchestrator(
                 orchestratorRepository.updateQueueStatus(sender, packageName, QueueStatus.FAILED)
                 uiManager.getActionPerformer().clickBackButton()
                 checkConsecutiveFailures()
+            } finally {
+                // Return device to normal Home screen state after processing queue item
+                try {
+                    AccessibilityLogger.i(TAG, "Returning device to normal Home screen state...")
+                    uiManager.getAccessibilityManager().performHome()
+                } catch (e: Exception) {
+                    AccessibilityLogger.e(TAG, "Failed to perform Home action on completion: ${e.message}")
+                }
             }
         }
     }
@@ -341,7 +378,6 @@ class ReplyOrchestrator(
                 com.example.model.LogCategory.APPLICATION,
                 "Auto-Reply Safety Lockdown triggered! Exceeded $FAILURE_THRESHOLD consecutive failures. Check accessibility settings."
             )
-            // Stop the loop or throttle further attempts to protect system resources
             stopQueueProcessingWorker()
         }
     }
