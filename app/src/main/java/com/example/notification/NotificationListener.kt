@@ -71,32 +71,42 @@ class NotificationListener : NotificationListenerService() {
                 val id = notificationRepository.saveNotification(notificationItem)
                 Log.d(TAG, "Notification stored with ID: $id")
 
-                // 3. Support queue insertion: check if any active rules match the message
-                val activeRules = ruleRepository.getActiveRules()
-                for (rule in activeRules) {
-                    if (isRuleMatched(notificationItem.message, rule.keyword, rule.matchType)) {
-                        Log.d(TAG, "Notification matched rule: ${rule.name}. Inserting to queue.")
-                        AppLogger.success(
-                            LogCategory.REPLY,
-                            "Notification from ${notificationItem.sender} matched Rule: '${rule.name}'. Queueing reply: '${rule.replyText}'",
-                            "Rule ID: ${rule.id}\nMatch Type: ${rule.matchType}\nMessage: ${notificationItem.message}"
-                        )
+                // 3. Forward to Full Reply Orchestrator if active
+                val orchestratorHandled = com.example.accessibility.imo.ReplyOrchestrator.getInstance()
+                    ?.onNotificationReceived(
+                        packageName = notificationItem.packageName,
+                        sender = notificationItem.sender,
+                        messageText = notificationItem.message
+                    ) ?: false
 
-                        val queueItem = QueueItem(
-                            ruleId = rule.id,
-                            senderName = notificationItem.sender,
-                            incomingMessage = notificationItem.message,
-                            replyText = rule.replyText,
-                            packageName = notificationItem.packageName,
-                            scheduledTime = System.currentTimeMillis() + rule.replyDelayMillis,
-                            createdAt = System.currentTimeMillis(),
-                            updatedAt = System.currentTimeMillis(),
-                            status = QueueStatus.PENDING
-                        )
-                        val queueId = queueRepository.saveQueueItem(queueItem)
-                        Log.d(TAG, "Inserted queue item with ID: $queueId")
-                        // Match only the first matching rule
-                        break
+                if (!orchestratorHandled) {
+                    // Fallback queue insertion if orchestrator did not handle
+                    val activeRules = ruleRepository.getActiveRules()
+                    for (rule in activeRules) {
+                        if (isRuleMatched(notificationItem.message, rule.keyword, rule.matchType)) {
+                            Log.d(TAG, "Notification matched rule: ${rule.name}. Inserting to queue.")
+                            AppLogger.success(
+                                LogCategory.REPLY,
+                                "Notification from ${notificationItem.sender} matched Rule: '${rule.name}'. Queueing reply: '${rule.replyText}'",
+                                "Rule ID: ${rule.id}\nMatch Type: ${rule.matchType}\nMessage: ${notificationItem.message}"
+                            )
+
+                            val queueItem = QueueItem(
+                                ruleId = rule.id,
+                                senderName = notificationItem.sender,
+                                incomingMessage = notificationItem.message,
+                                replyText = rule.replyText,
+                                packageName = notificationItem.packageName,
+                                scheduledTime = System.currentTimeMillis() + rule.replyDelayMillis,
+                                createdAt = System.currentTimeMillis(),
+                                updatedAt = System.currentTimeMillis(),
+                                status = QueueStatus.PENDING
+                            )
+                            val queueId = queueRepository.saveQueueItem(queueItem)
+                            Log.d(TAG, "Inserted queue item with ID: $queueId")
+                            // Match only the first matching rule
+                            break
+                        }
                     }
                 }
 

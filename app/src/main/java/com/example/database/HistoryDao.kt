@@ -12,11 +12,17 @@ interface HistoryDao {
     @Query("SELECT * FROM reply_history ORDER BY timestamp DESC")
     fun getAllHistoryFlow(): Flow<List<HistoryEntity>>
 
+    @Query("SELECT * FROM reply_history ORDER BY timestamp DESC")
+    suspend fun getAllHistoryList(): List<HistoryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHistory(history: HistoryEntity): Long
 
     @Delete
     suspend fun deleteHistory(history: HistoryEntity)
+
+    @Query("DELETE FROM reply_history WHERE timestamp < :cutoffTimestamp")
+    suspend fun deleteHistoryOlderThan(cutoffTimestamp: Long): Int
 
     @Query("DELETE FROM reply_history")
     suspend fun clearAllHistory()

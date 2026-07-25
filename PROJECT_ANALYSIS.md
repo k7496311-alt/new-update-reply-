@@ -1,17 +1,17 @@
-# Smart Auto Reply - Project Analysis
+# Smart Auto Reply - Comprehensive Project Analysis
 
-This document provides a comprehensive structural and functional analysis of the **Smart Auto Reply** Android application. It outlines the architectural design, directory configuration, database schema definitions, current progress, compile status, risks, and next steps.
+This document provides a complete, up-to-date structural and functional analysis of the **Smart Auto Reply** Android application. It details the architecture, directory organization, database schema, existing features, development progress, build status, risks, and recommended next steps.
 
 ---
 
 ## 1. Project Architecture
 
-The application is engineered using modern Android development practices, strictly adhering to **MVVM (Model-View-ViewModel)** and **Clean Architecture** patterns, leveraging **Jetpack Compose** for a reactive, state-driven presentation layer.
+The application is engineered following modern Android architecture standards, strictly implementing **MVVM (Model-View-ViewModel)** and **Clean Architecture** patterns. The presentation layer is built declaratively using **Jetpack Compose** with Material Design 3.
 
 ```
-       [ Jetpack Compose UI ] (Screens / Themes)
+       [ Jetpack Compose UI ] (Screens / Navigation / Theme)
                  ▲
-                 │ (StateFlow / UI States)
+                 │ (StateFlow / UI State)
                  ▼
           [ ViewModels ]
                  ▲
@@ -21,219 +21,139 @@ The application is engineered using modern Android development practices, strict
           ▲            ▲
           │            │
           ▼            ▼
-   [ Room Database ]  [ System Services & Engines ]
-   (Local SQLite DB)  (Accessibility / Notifications / Queues)
+   [ Room Database ]  [ System Services & Automation Engines ]
+   (Local SQLite DB)  (Accessibility / Notifications / Queue / Orchestrator)
 ```
 
-The codebase is divided into clear functional layers:
-- **Presentation Layer (UI)**: Built with declarative Jetpack Compose. Utilizes custom Kotlin `StateFlow` structures with `viewModelScope` lifecycle execution. Follows Material Design 3 guidelines.
-- **Domain Layer (Model)**: Clean, platform-agnostic models establishing the core business rules and telemetry entities.
-- **Data Layer (Persistence)**: Implements the Repository Pattern (`*Repository` interfaces mapped to `*RepositoryImpl` classes). Underpinned by a Room SQLite database (`AppDatabase`) and a shared settings manager.
-- **Service & Background Layer**:
-  - **AutoReplyService**: A Foreground Service utilizing a `SupervisorJob` heartbeat loop to orchestrate reply queues safely and battery-efficiently.
-  - **NotificationListener**: An active `NotificationListenerService` capturing incoming push-messaging payloads from third-party applications.
-  - **AutoReplyAccessibilityService**: An active `AccessibilityService` that handles dynamic screen scanning and inputs text to automate chat-app replies.
-  - **QueueEngine & RuleEngine**: In-memory and database-backed rule evaluating frameworks controlling timers, cooldowns, delays, and prioritized retries.
+### Key Architectural Layers:
+1. **Presentation Layer (`com.example.ui`)**: Declarative Compose screens (`HomeScreen`, `RulesScreen`, `HistoryScreen`, `LogViewerScreen`, `SettingsScreen`, `PermissionScreen`) backed by stateful ViewModels utilizing Kotlin `StateFlow` and `viewModelScope`.
+2. **Domain / Model Layer (`com.example.model`)**: Pure Kotlin domain models (`AutoReplyRule`, `QueueItem`, `ReplyHistory`, `NotificationData`, `AnalyzedMessage`, `Contact`, `BlacklistEntry`, `LogItem`, etc.).
+3. **Data Layer (`com.example.data` & `com.example.database`)**: Repository implementations mapping domain contracts to Room DAOs and persistent storage (`AppDatabase` v7).
+4. **Service & Orchestration Subsystems**:
+   - **`AutoReplyService`**: Foreground service managing continuous auto-reply background execution.
+   - **`NotificationListener`**: Android `NotificationListenerService` capturing push notifications from target messaging applications.
+   - **`AutoReplyAccessibilityService`**: Core Android `AccessibilityService` providing node scanning and automated UI interaction capabilities.
+   - **`ReplyOrchestrator` & `OrchestratorStateMachine`**: Master execution framework driving a 13-state transition loop (Opening Chat -> Voice Transcription -> Rule Matching -> Reply Generation -> Dispatch & Verification).
+   - **`QueueEngine`**: Priority queue manager with delayed retry handling and rate limiting.
+   - **`RuleEngine`**: Pattern evaluator (EXACT, CONTAINS, STARTS_WITH, REGEX) with cooldown and delay support.
 
 ---
 
 ## 2. Folder Structure
 
-The logical organization of the project's source folders and configuration manifests:
-
 ```
-/ (Root Workspace Directory)
-├── app/                              # Primary Android application module
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── AndroidManifest.xml   # Application platform registration, service declarations & permissions
-│   │   │   ├── java/com/example/     # Primary Kotlin codebase namespace
-│   │   │   │   ├── accessibility/    # Accessibility managers, tree analyzers, actions & service handlers
-│   │   │   │   ├── data/             # Repository interface implementations (SQLite/Room integrations)
-│   │   │   │   ├── database/         # Room Database configuration, type converters, Entities & DAOs
-│   │   │   │   ├── history/          # Historically sent replies subsystem
-│   │   │   │   ├── logger/           # Custom local diagnostic logging mechanics
-│   │   │   │   ├── model/            # Pure Domain Models and system enumeration types
-│   │   │   │   ├── network/          # Placeholder package for remote connection components
-│   │   │   │   ├── notification/     # Push notification listeners, helper utilities & text parsers
-│   │   │   │   ├── overlay/          # System window layout overlay utilities
-│   │   │   │   ├── permission/       # System and runtime platform permission managers
-│   │   │   │   ├── queue/            # Message processing queues, heartbeat loops & dispatchers
-│   │   │   │   ├── reply/            # Automator messaging execution drivers
-│   │   │   │   ├── repository/       # Data Access Repository interface definitions
-│   │   │   │   ├── rule/             # Rule pattern evaluations and exact-regex matching utilities
-│   │   │   │   ├── service/          # Foreground orchestrator service and boot recovery receivers
-│   │   │   │   ├── settings/         # App-wide shared preferences and global state controls
-│   │   │   │   └── ui/               # M3 theme configurations, screens, navigation & ViewModels
-│   │   │   └── res/
-│   │   │       ├── drawable/         # Graphic vector resources
-│   │   │       ├── values/           # Theme colors, text styles, and string files (strings.xml)
-│   │   │       └── xml/              # Configuration schemas (accessibility_service_config.xml, backups)
-│   │   └── test/java/com/example/    # Local JVM tests, Robolectric simulations & Roborazzi screenshot tests
-│   ├── build.gradle.kts              # App-level build toolchain, plugins, and dependency configuration
-│   └── proguard-rules.pro            # Code obfuscation and optimization specifications
-├── build.gradle.kts                  # Project-level build configuration and plugin declarations
-├── settings.gradle.kts               # Module integrations and project settings
-├── metadata.json                     # AI Studio platform configuration and capability metadata
-└── README.md                         # General developer project overview
+/ (Root Workspace)
+├── app/
+│   ├── build.gradle.kts
+│   ├── proguard-rules.pro
+│   └── src/
+│       ├── main/
+│       │   ├── AndroidManifest.xml
+│       │   ├── java/com/example/
+│       │   │   ├── MainActivity.kt
+│       │   │   ├── accessibility/          # Core accessibility helpers, tree analyzer, node scanner
+│       │   │   │   └── imo/               # IMO / IMO Lite automation orchestrator, state machine, sender, voice transcript
+│       │   │   ├── data/                  # Repository implementations (Clean Data layer)
+│       │   │   ├── database/              # Room AppDatabase, DAOs, Entities, TypeConverters
+│       │   │   ├── history/               # Reply history manager & logger
+│       │   │   ├── logger/                # Diagnostic AppLogger & AccessibilityLogger
+│       │   │   ├── model/                 # Pure domain models and enums
+│       │   │   ├── notification/          # Notification listener service & parsers
+│       │   │   ├── overlay/               # System window overlay utilities
+│       │   │   ├── permission/            # Platform & runtime permission managers
+│       │   │   ├── queue/                 # QueueEngine, SmartQueueProcessor, ReplyQueue
+│       │   │   ├── reply/                 # ReplyGenerator, ReplySender, ConversationStateManager
+│       │   │   ├── repository/            # Repository interface definitions
+│       │   │   ├── rule/                  # RuleEngine, RuleMatcher, RuleValidator
+│       │   │   ├── service/               # AutoReplyService, BootReceiver
+│       │   │   ├── settings/              # Settings repository & manager
+│       │   │   ├── ui/                    # Compose screens, ViewModels, Theme
+│       │   │   └── utils/                 # Utility extensions
+│       │   └── res/                       # Drawables, values, strings.xml, accessibility_service_config.xml
+│       └── test/java/com/example/         # Robolectric JVM & Unit test suite
+├── build.gradle.kts                       # Root build script
+├── settings.gradle.kts                    # Module configuration
+├── gradle/libs.versions.toml              # Version catalog
+├── metadata.json                          # AI Studio project metadata
+└── PROJECT_ANALYSIS.md                    # Project analysis report
 ```
 
 ---
 
 ## 3. Module List
 
-The project utilizes a **Single-Module** Gradle architecture optimized for compilation efficiency, incremental build caching, and rapid deployment:
-- **`:app`**: Contains all visual interfaces, database engines, foreground services, system-level listener integrations, and Robolectric/unit testing frameworks.
+The project follows a streamlined **Single-Module** Gradle structure:
+- **`:app`**: Contains all UI components, database persistence, domain logic, accessibility services, notification listeners, foreground services, and unit test suites.
 
 ---
 
 ## 4. Database Tables
 
-The application features a Room persistence database (`smart_auto_reply_db`) containing **8 distinct tables** supporting clean schema migrations up to **Version 7**:
+The application uses Room ORM persistence (`smart_auto_reply_db`) with **8 main tables** (Schema Version 7):
 
-### 1. `reply_rules` (Mapped to `RuleEntity`)
-Stores rule-matching criteria, scheduling offsets, and metadata used by the matching engine.
-- `id` (Long, Primary Key, Auto-Generated)
-- `name` (String) - Friendly description of the rule.
-- `keyword` (String) - Match target phrase.
-- `replyText` (String) - Automated reply contents.
-- `isEnabled` (Boolean) - Active flag status.
-- `matchType` (String/Enum) - Match logic (EXACT, CONTAINS, STARTS_WITH, REGEX).
-- `replyDelayMillis` (Long) - Delay scheduling duration.
-- `createdAt` / `updatedAt` (Long) - Unix timestamps.
-- `status` (RuleStatus/Enum) - Operational state of the rule.
-- `priority` (Int) - Priority weighting (higher processes first).
-- `cooldownMillis` (Long) - Rate-limiting time window.
-- `maxReplies` (Int) - Execution threshold counters.
-- `category` (String) - Tag groupings.
-
-### 2. `reply_history` (Mapped to `HistoryEntity`)
-Keeps audit logs of dispatched auto-responses.
-- `id` (Long, Primary Key, Auto-Generated)
-- `ruleId` (Long) - Linked rule ID.
-- `ruleName` (String) - Captured snapshot name.
-- `senderName` (String) - Incoming message sender.
-- `incomingMessage` (String) - Received body.
-- `repliedMessage` (String) - Outgoing body.
-- `packageName` (String) - Originating application package name.
-- `timestamp` (Long) - Event epoch timestamp.
-- `isSuccessfullySent` (Boolean) - Success verification.
-- `createdAt` / `updatedAt` (Long) - Unix timestamps.
-- `status` (HistoryStatus/Enum) - Execution state (SENT, FAILED, etc.).
-- `reason` (String) - Failure reason explanation.
-
-### 3. `reply_queue` (Mapped to `QueueEntity`)
-Schedules, prioritizes, and retries pending messages.
-- `id` (Long, Primary Key, Auto-Generated)
-- `ruleId` (Long) - Linked trigger rule.
-- `senderName` (String) - Incoming sender.
-- `incomingMessage` (String) - Incoming content.
-- `replyText` (String) - Formatted automated reply text.
-- `packageName` (String) - Target messenger app package ID.
-- `scheduledTime` (Long) - Future delivery epoch.
-- `createdAt` / `updatedAt` (Long) - State update tracking.
-- `status` (QueueStatus/Enum) - Lifecycle state (PENDING, PROCESSING, SENT, FAILED).
-- `priority` (Int) - Queue execution urgency.
-- `retryCount` / `maxRetries` (Int) - Resend tracking metrics.
-- `errorMessage` (String?) - Optional crash logs.
-
-### 4. `contacts` (Mapped to `ContactEntity`)
-Maintains contact-specific criteria.
-- `id` (Long, Primary Key, Auto-Generated)
-- `name` (String) - Contact name.
-- `phoneNumber` (String) - Target phone number.
-- `createdAt` / `updatedAt` (Long) - Creation and update timing.
-- `status` (ContactStatus/Enum) - Filter category.
-
-### 5. `app_settings` (Mapped to `SettingsEntity`)
-System settings store.
-- `key` (String, Primary Key) - Setting variable name.
-- `value` (String) - Value contents.
-- `createdAt` / `updatedAt` (Long) - Tracking timers.
-- `status` (SettingsStatus/Enum) - Active state flag.
-
-### 6. `blacklist` (Mapped to `BlacklistEntity`)
-Prevents automated responses to specific app channels or sender identifiers.
-- `id` (Long, Primary Key, Auto-Generated)
-- `identifier` (String) - Contact name, number, or package id.
-- `reason` (String) - Documentation for exclusion.
-- `createdAt` / `updatedAt` (Long) - Timestamps.
-- `status` (BlacklistStatus/Enum) - Lifecycle indicators.
-
-### 7. `notifications` (Mapped to `NotificationEntity`)
-Logs caught incoming system push notifications.
-- `id` (Long, Primary Key, Auto-Generated)
-- `packageName` (String) - Originating application.
-- `appName` (String) - App visual name.
-- `sender` (String) - Messaging sender.
-- `conversation` (String) - Chat channel thread.
-- `message` (String) - Content.
-- `timestamp` (Long) - Arrival timestamp.
-- `notificationId` (Int) - System notification channel reference.
-- `isGroupMessage` (Boolean) - Multi-user chat channel flag.
-
-### 8. `application_logs` (Mapped to `LogEntity`)
-Stores developer logs to display in the system console viewer.
-- `id` (Long, Primary Key, Auto-Generated)
-- `timestamp` (Long) - Log creation timestamp.
-- `category` (String/Enum) - System tag (ACCESSIBILITY, SERVICE, DATABASE, etc.).
-- `level` (String/Enum) - Diagnostic level (DEBUG, INFO, WARN, ERROR).
-- `message` (String) - Details.
-- `extraData` (String?) - Optional stacktrace or error payload.
+1. **`reply_rules` (`RuleEntity`)**: Auto-reply triggers, matching logic (EXACT, CONTAINS, STARTS_WITH, REGEX), reply text, priority, delay, cooldown, max reply limits, category.
+2. **`reply_history` (`HistoryEntity`)**: Sent/failed reply audit logs, rule ID, sender name, incoming/outgoing text, package name, execution status, timestamp.
+3. **`reply_queue` (`QueueEntity`)**: Scheduled messages, priority, scheduled execution time, retry count, status (PENDING, PROCESSING, SENT, FAILED, SKIPPED), error logs.
+4. **`contacts` (`ContactEntity`)**: Contact entries, phone numbers, contact status.
+5. **`app_settings` (`SettingsEntity`)**: App configuration key-value pairs (e.g. `service_enabled`).
+6. **`blacklist` (`BlacklistEntity`)**: Excluded senders, contact names, or app identifiers barred from automated replies.
+7. **`notifications` (`NotificationEntity`)**: Logged incoming system notifications, package name, sender, chat channel, message text, timestamp.
+8. **`application_logs` (`LogEntity`)**: System diagnostic log entries, category (ACCESSIBILITY, SERVICE, DATABASE, etc.), log level (DEBUG, INFO, WARN, ERROR, CRITICAL), timestamp, message, extra data.
 
 ---
 
 ## 5. Existing Features
 
-- **Advanced Matcher Engine**: Exact phrase matching, substring detection, prefixed matches, and comprehensive RegEx evaluations. Supports priority ordering and category filters.
-- **Transactional Queue Scheduler**: Manages scheduling offsets, retry boundaries, and priority sorting to process replies gracefully without system throttling.
-- **Push Listener Hook**: Hooks directly into incoming Android notifications via a system `NotificationListenerService` to capture messages instantly.
-- **Accessibility Automation Driver**: Inspects active screens, scans UI node trees, enters automated reply text, and sends messages on supported chat apps (e.g., WhatsApp).
-- **Foreground Orchestration**: Runs an active background service with system `specialUse` permission and wake locks to keep the app functional across Doze mode.
-- **Blacklists and Settings Panels**: Restricts specific contacts/apps and provides controls to manage the auto-reply state.
-- **In-App Diagnostic Log Console**: Real-time visualization of logs directly from the database for developer debugging.
-- **Unit & Robolectric Test Suite**: Comprehensive testing for matching, queue processing, notification triggers, and screenshot regressions.
+- **Automated Messaging Orchestrator**: End-to-end processing pipeline for IMO / IMO Lite messaging automation.
+- **State Machine Workflow**: 13 discrete phases (`IDLE`, `QUEUED`, `OPENING_CHAT`, `ANALYZING_MESSAGE`, `TRANSCRIBING_VOICE`, `MATCHING_RULES`, `GENERATING_REPLY`, `CHECKING_COOLDOWN`, `SENDING_REPLY`, `VERIFYING_SENT`, `COMPLETING`, `FAILED`, `SKIPPED`).
+- **Voice Message Support**: Detects voice messages in chat threads, triggers on-screen audio transcription ("A" button), reads transcribed text, and passes it to the Rule Engine.
+- **Flexible Pattern Rule Engine**: Exact phrase, substring, prefix, and RegEx rule matching with delays, cooldowns, and priorities.
+- **Priority Queue & Retry Engine**: Manages scheduled messages, priority execution, retry counts, and timeout protection (30s safety cap).
+- **System Notification Listener**: Hooks incoming notifications to trigger instant automated responses.
+- **Accessibility Automation**: Dynamic screen tree scanning, contact chat opening, message field text entry, and send button clicks.
+- **Foreground Service**: `AutoReplyService` with system `specialUse` permission and `BootReceiver` for system boot survival.
+- **Jetpack Compose UI**: Complete Material 3 UI featuring Home, Rules Manager, History Logs, Diagnostic Console Viewer, Settings, and Permission Request screens.
+- **Diagnostic Logging**: In-app live log viewer powered by `LogEntity` database storage.
+- **Testing Suite**: Robolectric JVM unit tests verifying state transitions, timing, entry/exit callbacks, and sender operations.
 
 ---
 
 ## 6. Current Progress
 
-- **Scaffolding & Clean State**: Remnants of the old journal app have been removed, and the core "Smart Auto Reply" platform is fully established.
-- **Architectural Implementation**: Repositories, DAOs, ViewModels, Services, and Compose UI screens are fully implemented and integrated.
-- **Database Schema**: A comprehensive Room DB is set up with fully validated migrations (v1 -> v7).
-- **Core Orchestration**: The service and engine infrastructure is ready to receive and dispatch messages.
+- Core framework, database schema, repository abstraction, and ViewModel integration are complete.
+- Complete auto-reply orchestrator (`ReplyOrchestrator`, `OrchestratorStateMachine`, `ReplySender`, `OrchestratorRepository`) is implemented.
+- Voice transcription handler for IMO voice messages is integrated.
+- Comprehensive unit tests created in `/app/src/test/java/com/example/`.
+- Project compiles cleanly without errors.
 
 ---
 
 ## 7. Missing Features
 
-- **AI Auto-Reply Support**: The dependencies include the Gemini/Firebase AI SDKs (`firebase-ai`), but actual model selection, prompt structures, and API processing integrations have not yet been added.
-- **Tailored Chat App Layout Profiles**: Chat apps frequently update their layouts. The codebase could benefit from customizable automation profiles to easily adapt to changed chat views (e.g., WhatsApp, Messenger, Telegram).
-- **Reply Metrics Visualization**: Dynamic graphical charts displaying telemetry logs or successful reply rates are not yet implemented.
-- **Workspace Build Blocker**: A template `.env.example` file is missing, which causes compile-time errors.
+- **LLM / Gemini AI Integration**: `firebase-ai` dependency is present in Gradle, but AI-based dynamic response generation is not yet hooked up to `ReplyGenerator`.
+- **Multi-Messenger Automation Drivers**: Currently optimized for IMO / IMO Lite; profiles for WhatsApp, Telegram, and Signal can be added.
+- **Backup & Restore**: Export/import functionality for auto-reply rules (JSON/CSV).
+- **Analytics Dashboard**: Visual charts for reply rates, daily statistics, and response times.
 
 ---
 
 ## 8. Build Status
 
-* **Status**: **FAILED** (Exit Code 1)
-* **Error**: `The file '/.env.example' could not be found`
-* **Root Cause**: The Secrets Gradle Plugin configuration in `/app/build.gradle.kts` defines a fallback template property named `.env.example`. Since this file was deleted during the previous project cleanup, the build fails during evaluation.
+* **Status**: **SUCCESSFUL / PASSED**
+* **Verification**: `compile_applet` completes cleanly with zero errors.
 
 ---
 
 ## 9. Risks
 
-1. **Gradle Build Blocker**: The missing `.env.example` file prevents compiling and launching the app.
-2. **System Permission Restrictions**: The application utilizes highly restricted permissions, including `BIND_NOTIFICATION_LISTENER_SERVICE` and `BIND_ACCESSIBILITY_SERVICE`. These require clear, prominent in-app disclosure and active user authorization to prevent OS-level blocks or rejection on Google Play.
-3. **Fragility of Accessibility Automation**: UI node tree scanning depends on specific layout patterns. Any layout changes in external applications (e.g., WhatsApp updates) can break the `NodeFinder`, causing automated inputs to fail.
-4. **Wakelocks and Battery Throttling**: Foreground services are subject to aggressive system optimization and battery restrictions. Heartbeats must remain lightweight to avoid system kills.
+1. **Accessibility Locators Fragility**: Accessibility automation relies on layout tree structures in third-party messaging apps (IMO). Layout updates by app developers could alter node resource IDs or class names.
+2. **OS Runtime Restrictions**: Requires special permissions (`BIND_ACCESSIBILITY_SERVICE`, `BIND_NOTIFICATION_LISTENER_SERVICE`, `SYSTEM_ALERT_WINDOW`) which must be manually granted by the user.
+3. **Battery Optimization & Doze Mode**: OS battery saver algorithms may restrict foreground service execution if not explicitly exempted by the user in system settings.
 
 ---
 
 ## 10. Next Recommended Step
 
-1. **Restore `.env.example`**: Create a blank or default `.env.example` template at the project root to satisfy the Secrets Gradle Plugin requirements and fix the compile error.
-2. **Verify Compilation**: Run `compile_applet` to ensure the project builds successfully.
-3. **Add Gemini AI Auto-Reply Integration**: Implement the Gemini API to analyze incoming messages and generate smart auto-responses, leveraging the existing `firebase-ai` dependency.
-4. **Refine Accessibility Locators**: Make the accessibility node scanner more resilient by introducing fallback patterns for finding text boxes and send buttons.
+1. **Gemini AI Integration**: Connect the `firebase-ai` SDK to `ReplyGenerator` to enable dynamic generative AI responses when no explicit keyword rule matches.
+2. **Additional App Drivers**: Extend accessibility node scanning profiles to support WhatsApp and Telegram.
+3. **Rule Import/Export**: Add JSON import/export functionality in `RulesScreen` for sharing and backing up rules.

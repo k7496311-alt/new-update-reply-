@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.example.accessibility.AutoReplyAccessibilityService
 import com.example.permission.PermissionManager
 
@@ -480,6 +481,72 @@ fun SettingsScreen(
                 }
             }
 
+            // Category: Performance & Optimization
+            val performanceMonitor = remember { com.example.performance.PerformanceMonitor.getInstance(context) }
+            val metrics by performanceMonitor.metricsState.collectAsState()
+            val optimizationEngine = remember { com.example.performance.OptimizationEngine.getInstance(context) }
+            val coroutineScope = rememberCoroutineScope()
+            var isOptimizing by remember { mutableStateOf(false) }
+
+            CategoryCard(
+                title = "Performance & Telemetry",
+                icon = Icons.Default.Speed
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MetricItem("Success Rate", "${String.format("%.1f", metrics.successRatePercentage)}%")
+                        MetricItem("Avg Reply Time", "${metrics.averageReplyTimeMs} ms")
+                        MetricItem("Memory Used", "${String.format("%.1f", metrics.memoryUsedMb)} MB")
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MetricItem("Total Tasks", "${metrics.totalProcessed}")
+                        MetricItem("Queue Wait", "${metrics.averageQueueWaitTimeMs} ms")
+                        MetricItem("Battery Temp", "${metrics.batteryTemperatureCelsius}°C")
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f))
+
+                    Button(
+                        onClick = {
+                            isOptimizing = true
+                            optimizationEngine.clearCaches()
+                            coroutineScope.launch {
+                                optimizationEngine.pruneOldRecords()
+                                performanceMonitor.updateMetrics()
+                                isOptimizing = false
+                                Toast.makeText(context, "Optimization Complete: Caches cleared & records pruned", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = !isOptimizing,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("btn_run_optimization")
+                    ) {
+                        Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(if (isOptimizing) "Optimizing System..." else "Run System Optimization")
+                    }
+                }
+            }
+
             // Category: About Detail
             CategoryCard(
                 title = "About Application",
@@ -859,3 +926,21 @@ fun SettingsLanguageRow(
         }
     }
 }
+
+@Composable
+fun MetricItem(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
+    }
+}
+

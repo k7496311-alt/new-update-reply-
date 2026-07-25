@@ -38,6 +38,11 @@ class ReplyOrchestrator(
         private const val TAG = "ReplyOrchestrator"
         private const val MAX_PROCESSING_TIME_MS = 30000L // 30s timeout per message
         private const val FAILURE_THRESHOLD = 3
+
+        @Volatile
+        private var activeInstance: ReplyOrchestrator? = null
+
+        fun getInstance(): ReplyOrchestrator? = activeInstance
     }
 
     private val orchestratorScope = CoroutineScope(dispatcher + SupervisorJob())
@@ -52,6 +57,7 @@ class ReplyOrchestrator(
     val isProcessingActive = _isProcessingActive.asStateFlow()
 
     init {
+        activeInstance = this
         // Start monitoring queue
         startQueueProcessingWorker()
     }
