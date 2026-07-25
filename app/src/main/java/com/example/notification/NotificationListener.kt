@@ -80,13 +80,13 @@ class NotificationListener : NotificationListenerService() {
                 val id = notificationRepository.saveNotification(notificationItem)
                 Log.d(TAG, "Notification stored with ID: $id")
 
-                // 3. Forward to Full Reply Orchestrator if active
-                val orchestratorHandled = com.example.accessibility.imo.ReplyOrchestrator.getInstance()
-                    ?.onNotificationReceived(
-                        packageName = notificationItem.packageName,
-                        sender = notificationItem.sender,
-                        messageText = notificationItem.message
-                    ) ?: false
+                // 3. Forward to Full Reply Orchestrator
+                val orchestrator = com.example.accessibility.imo.ReplyOrchestrator.getOrCreateInstance(applicationContext)
+                val orchestratorHandled = orchestrator.onNotificationReceived(
+                    packageName = notificationItem.packageName,
+                    sender = notificationItem.sender,
+                    messageText = notificationItem.message
+                )
 
                 if (!orchestratorHandled) {
                     // Fallback queue insertion if orchestrator did not handle

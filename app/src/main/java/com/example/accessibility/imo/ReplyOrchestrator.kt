@@ -44,6 +44,62 @@ class ReplyOrchestrator(
         private var activeInstance: ReplyOrchestrator? = null
 
         fun getInstance(): ReplyOrchestrator? = activeInstance
+
+        fun getOrCreateInstance(context: Context): ReplyOrchestrator {
+            return activeInstance ?: synchronized(this) {
+                activeInstance ?: createInstance(context.applicationContext).also { activeInstance = it }
+            }
+        }
+
+        private fun createInstance(appContext: Context): ReplyOrchestrator {
+            val database = com.example.database.AppDatabase.getDatabase(appContext)
+            val serviceRepository = com.example.data.ServiceRepositoryImpl(appContext)
+            val blacklistRepository = com.example.data.BlacklistRepositoryImpl(database.blacklistDao())
+            val queueRepository = com.example.data.QueueRepositoryImpl(database.queueDao())
+            val ruleRepository = com.example.data.RuleRepositoryImpl(database.ruleDao())
+            val conversationRepository = com.example.data.ConversationRepositoryImpl(database.conversationDao())
+            val historyRepository = com.example.data.HistoryRepositoryImpl(database.historyDao())
+            val historyManager = com.example.history.HistoryManager(historyRepository)
+            val messageAnalyzerRepository = com.example.data.MessageAnalyzerRepositoryImpl()
+            val settingsRepository = com.example.data.SettingsRepositoryImpl(database.settingsDao())
+
+            val orchestratorRepository = OrchestratorRepository(
+                serviceRepository = serviceRepository,
+                blacklistRepository = blacklistRepository,
+                queueRepository = queueRepository,
+                ruleRepository = ruleRepository,
+                conversationRepository = conversationRepository,
+                historyManager = historyManager,
+                messageAnalyzer = messageAnalyzerRepository,
+                settingsRepository = settingsRepository
+            )
+
+            val stateMachine = OrchestratorStateMachine()
+
+            val accessibilityManager = com.example.accessibility.AccessibilityManager(appContext)
+            val nodeScanner = IMONodeScanner()
+            val actionPerformer = IMOActionPerformer(appContext, accessibilityManager, nodeScanner)
+            val transcriptManager = VoiceTranscriptManager()
+            val voiceMessageHandler = VoiceMessageHandler(appContext, accessibilityManager, nodeScanner, transcriptManager)
+            val uiManager = IMOUIManager(accessibilityManager, nodeScanner, actionPerformer)
+
+            val ruleEngine = com.example.rule.RuleEngine()
+            val replyGeneratorRepository = com.example.data.ReplyGeneratorRepositoryImpl(historyRepository, settingsRepository)
+            val replyGenerator = com.example.reply.ReplyGenerator(replyGeneratorRepository)
+            val replySender = ReplySender(appContext, accessibilityManager, nodeScanner, actionPerformer)
+            val queueEngine = com.example.queue.QueueEngine(queueRepository)
+
+            return ReplyOrchestrator(
+                context = appContext,
+                orchestratorRepository = orchestratorRepository,
+                stateMachine = stateMachine,
+                uiManager = uiManager,
+                ruleEngine = ruleEngine,
+                replyGenerator = replyGenerator,
+                replySender = replySender,
+                queueEngine = queueEngine
+            )
+        }
     }
 
     private val orchestratorScope = CoroutineScope(dispatcher + SupervisorJob())
