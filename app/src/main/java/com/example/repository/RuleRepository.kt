@@ -9,4 +9,5 @@ interface RuleRepository {
     suspend fun getRuleById(id: Long): AutoReplyRule?
     suspend fun saveRule(rule: AutoReplyRule): Long
     suspend fun deleteRule(rule: AutoReplyRule)
+    suspend fun deleteAllRules()
 }

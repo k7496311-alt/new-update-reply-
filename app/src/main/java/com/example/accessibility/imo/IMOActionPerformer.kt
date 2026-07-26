@@ -7,6 +7,7 @@ import com.example.accessibility.AccessibilityLogger
 import com.example.accessibility.AccessibilityManager
 import com.example.model.MessageType
 import com.example.model.NotificationData
+import com.example.notification.NotificationPendingIntentCache
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -48,18 +49,31 @@ class IMOActionPerformer(
     }
 
     /**
-     * Helper to launch an app package directly into the foreground.
+     * Helper to launch an app package directly into the foreground even from background.
      */
     fun launchAppPackage(packageName: String): Boolean {
         if (packageName.isBlank()) return false
         return try {
-            val pm = context.packageManager
+            val launchContext = com.example.accessibility.AutoReplyAccessibilityService.getInstance() ?: context
+            val pm = launchContext.packageManager
             val intent = pm.getLaunchIntentForPackage(packageName)
             if (intent != null) {
-                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                context.startActivity(intent)
+                intent.addFlags(
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                )
+                val options = android.app.ActivityOptions.makeBasic()
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    options.setPendingIntentBackgroundActivityStartMode(android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                }
+                launchContext.startActivity(intent, options.toBundle())
+                AccessibilityLogger.i(TAG, "App package '$packageName' launched successfully from background")
                 true
             } else {
+                AccessibilityLogger.e(TAG, "No launch intent found for package '$packageName'")
                 false
             }
         } catch (e: Exception) {
@@ -137,20 +151,12 @@ class IMOActionPerformer(
         return executeActionWithRetry("openChatByNotification") {
             try {
                 if (notification.pendingIntent != null) {
-                    notification.pendingIntent.send()
-                    delay(1500L) // Wait for app launch
-                    true
+                    val sent = NotificationPendingIntentCache.sendPendingIntent(context, notification.pendingIntent)
+                    delay(2000L) // Wait for app launch
+                    sent
                 } else {
                     AccessibilityLogger.w(TAG, "Notification has no PendingIntent. Fallback to package launcher.")
-                    val intent = context.packageManager.getLaunchIntentForPackage(notification.packageName)
-                    if (intent != null) {
-                        context.startActivity(intent)
-                        delay(2000L)
-                        true
-                    } else {
-                        AccessibilityLogger.e(TAG, "Failed to resolve launch intent for package '${notification.packageName}'")
-                        false
-                    }
+                    launchAppPackage(notification.packageName)
                 }
             } catch (e: Exception) {
                 AccessibilityLogger.e(TAG, "Error launching notification action", e)

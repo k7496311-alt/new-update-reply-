@@ -93,18 +93,42 @@ class IMONodeScanner {
 
         private val CONV_INPUT_IDS = listOf(
             "com.imo.android.imoim:id/edit_text",
-            "com.imo.android.imoimlite:id/edit_text",
-            "edit_text",
+            "com.imo.android.imoim:id/et_message",
+            "com.imo.android.imoim:id/chat_input",
+            "com.imo.android.imoim:id/input_box",
+            "com.imo.android.imoim:id/message_edit",
+            "com.imo.android.imoim:id/message_input",
+            "com.imo.android.imoim:id/text_input",
             "com.imo.android.imoim:id/input",
+            "com.imo.android.imoim:id/msg_edit",
+            "com.imo.android.imoimlite:id/edit_text",
+            "com.imo.android.imoimlite:id/et_message",
+            "com.imo.android.imoimlite:id/input_box",
+            "com.imo.android.imoimlite:id/chat_input",
             "com.imo.android.imoimlite:id/input",
-            "com.imo.android.imoim:id/msg_edit"
+            "edit_text",
+            "input",
+            "msg_edit"
         )
         private val CONV_SEND_IDS = listOf(
             "com.imo.android.imoim:id/send",
-            "com.imo.android.imoimlite:id/send",
-            "send",
             "com.imo.android.imoim:id/btn_send",
-            "com.imo.android.imoimlite:id/btn_send"
+            "com.imo.android.imoim:id/send_btn",
+            "com.imo.android.imoim:id/iv_send",
+            "com.imo.android.imoim:id/image_send",
+            "com.imo.android.imoim:id/send_button",
+            "com.imo.android.imoim:id/send_icon",
+            "com.imo.android.imoim:id/chat_send",
+            "com.imo.android.imoim:id/v_send",
+            "com.imo.android.imoim:id/right_btn",
+            "com.imo.android.imoimlite:id/send",
+            "com.imo.android.imoimlite:id/btn_send",
+            "com.imo.android.imoimlite:id/send_btn",
+            "com.imo.android.imoimlite:id/iv_send",
+            "com.imo.android.imoimlite:id/send_button",
+            "send",
+            "btn_send",
+            "send_btn"
         )
         private val CONV_MIC_IDS = listOf(
             "com.imo.android.imoim:id/mic",
@@ -360,13 +384,59 @@ class IMONodeScanner {
     fun findInputField(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
         if (root == null) return null
         return findNodeByMultipleIds(root, CONV_INPUT_IDS) 
-            ?: findFirstByCriteria(root) { it.isEditable && it.className?.contains("EditText") == true }
+            ?: findFirstByCriteria(root) { node ->
+                val className = node.className?.toString() ?: ""
+                val resId = node.viewIdResourceName ?: ""
+                (node.isEditable || className.contains("EditText", ignoreCase = true) || resId.contains("edit", ignoreCase = true) || resId.contains("input", ignoreCase = true)) && node.isEnabled
+            }
     }
 
     fun findSendButton(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
         if (root == null) return null
-        return findNodeByMultipleIds(root, CONV_SEND_IDS)
-            ?: findFirstByCriteria(root) { it.isClickable && (it.text?.toString()?.contains("Send", ignoreCase = true) == true || it.contentDescription?.toString()?.contains("Send", ignoreCase = true) == true) }
+        
+        // 1. Check known send IDs
+        val directMatch = findNodeByMultipleIds(root, CONV_SEND_IDS)
+        if (directMatch != null) return directMatch
+
+        // 2. Check text or content description
+        val textMatch = findFirstByCriteria(root) { node ->
+            val text = node.text?.toString() ?: ""
+            val desc = node.contentDescription?.toString() ?: ""
+            val resId = node.viewIdResourceName ?: ""
+            (node.isClickable || node.isCheckable) && (
+                text.contains("Send", ignoreCase = true) ||
+                text.contains("পাঠান", ignoreCase = true) ||
+                desc.contains("Send", ignoreCase = true) ||
+                desc.contains("পাঠান", ignoreCase = true) ||
+                resId.contains("send", ignoreCase = true)
+            )
+        }
+        if (textMatch != null) return textMatch
+
+        // 3. Relative positioning fallback: Find button situated to the right of the input field
+        val inputField = findInputField(root)
+        if (inputField != null) {
+            val inputBounds = Rect()
+            inputField.getBoundsInScreen(inputBounds)
+            inputField.recycle()
+
+            if (inputBounds.width() > 0) {
+                return findFirstByCriteria(root) { node ->
+                    if (!node.isClickable && node.parent?.isClickable != true) return@findFirstByCriteria false
+                    val nodeBounds = Rect()
+                    node.getBoundsInScreen(nodeBounds)
+
+                    // Must be situated to the right of the input field and in the same horizontal bar
+                    val isToRight = nodeBounds.left >= (inputBounds.right - 120) || nodeBounds.centerX() > inputBounds.centerX()
+                    val isInSameRow = nodeBounds.top >= (inputBounds.top - 150) && nodeBounds.bottom <= (inputBounds.bottom + 150)
+                    val isSmallIcon = nodeBounds.width() in 15..350 && nodeBounds.height() in 15..350
+
+                    isToRight && isInSameRow && isSmallIcon
+                }
+            }
+        }
+
+        return null
     }
 
     fun findMicButton(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {

@@ -272,15 +272,27 @@ class ReplyOrchestrator(
                     if (cachedPendingIntent != null) {
                         try {
                             AccessibilityLogger.i(TAG, "Clicking notification PendingIntent directly for '$sender'...")
-                            cachedPendingIntent.send()
-                            delay(1500L) // UI launch stabilization
-                            chatOpened = uiManager.getActionPerformer().isOnChatScreen() || uiManager.getActionPerformer().isOnChatListScreen()
+                            val sent = NotificationPendingIntentCache.sendPendingIntent(context, cachedPendingIntent)
+                            if (sent) {
+                                // Wait up to 4 seconds for app to bring foreground and reach chat/chat list screen
+                                val startTime = System.currentTimeMillis()
+                                while (System.currentTimeMillis() - startTime < 4000L) {
+                                    delay(500L)
+                                    if (uiManager.getActionPerformer().isOnChatScreen() || uiManager.getActionPerformer().isOnChatListScreen()) {
+                                        chatOpened = true
+                                        break
+                                    }
+                                }
+                            }
                         } catch (e: Exception) {
                             AccessibilityLogger.e(TAG, "PendingIntent click failed for '$sender', falling back to manual open", e)
                         }
                     }
 
                     if (!chatOpened) {
+                        AccessibilityLogger.i(TAG, "Chat not opened via PendingIntent. Launching app package '$packageName' directly...")
+                        uiManager.getActionPerformer().launchAppPackage(packageName)
+                        delay(2000L)
                         chatOpened = uiManager.getActionPerformer().openChatByContactName(sender, packageName)
                     }
 

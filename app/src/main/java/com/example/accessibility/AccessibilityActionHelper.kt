@@ -47,9 +47,13 @@ object AccessibilityActionHelper {
             AccessibilityLogger.w(CATEGORY, "safeInputText: Node is null")
             return false
         }
-        if (!node.isEditable) {
-            AccessibilityLogger.w(CATEGORY, "safeInputText: Node is not editable")
-            return false
+
+        // Try focusing and clicking the node first to ensure IME/accessibility readiness
+        try {
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        } catch (e: Exception) {
+            AccessibilityLogger.w(CATEGORY, "safeInputText: Focus/Click attempt notice: ${e.message}")
         }
 
         val arguments = Bundle().apply {
@@ -58,7 +62,20 @@ object AccessibilityActionHelper {
                 text
             )
         }
-        val success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        var success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+
+        if (!success && !node.isEditable) {
+            // Try parent or child if the container node was passed
+            var current: AccessibilityNodeInfo? = node
+            for (i in 0 until 3) {
+                current = current?.parent ?: break
+                if (current.isEditable) {
+                    success = current.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+                    if (success) break
+                }
+            }
+        }
+
         if (success) {
             AccessibilityLogger.d(CATEGORY, "Safely input text: \"$text\" into ${node.viewIdResourceName}")
         } else {

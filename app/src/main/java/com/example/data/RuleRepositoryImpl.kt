@@ -38,4 +38,8 @@ class RuleRepositoryImpl(
     override suspend fun deleteRule(rule: AutoReplyRule) {
         ruleDao.deleteRule(RuleEntity.fromDomainModel(rule))
     }
+
+    override suspend fun deleteAllRules() {
+        ruleDao.deleteAllRules()
+    }
 }

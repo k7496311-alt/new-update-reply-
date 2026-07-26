@@ -77,7 +77,7 @@ class AutoReplyAccessibilityService : AccessibilityService() {
                             // Instantly click notification contentIntent via Accessibility privileges
                             try {
                                 Log.i(TAG, "Instant Notification Click triggered for '$title'")
-                                intent.send()
+                                NotificationPendingIntentCache.sendPendingIntent(this, intent)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error clicking Notification contentIntent: ${e.message}", e)
                             }

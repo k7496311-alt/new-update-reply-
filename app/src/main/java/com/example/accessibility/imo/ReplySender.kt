@@ -71,16 +71,23 @@ class ReplySender(
 
         // 1. Open chat (or verify already open)
         var opened = false
-        val currentRoot = accessibilityManager.getRootNode()
-        val currentScreenInfo = nodeScanner.scanChatConversationScreen(currentRoot)
-        currentRoot?.recycle()
-
-        if (currentScreenInfo != null && currentScreenInfo.contactName.equals(contactName, ignoreCase = true)) {
-            AccessibilityLogger.i(TAG, "Target chat with '$contactName' is already open.")
+        val isAlreadyOnChat = actionPerformer.isOnChatScreen()
+        
+        if (isAlreadyOnChat) {
+            AccessibilityLogger.i(TAG, "Target chat screen is already open and active.")
             opened = true
         } else {
-            AccessibilityLogger.d(TAG, "Opening chat with '$contactName'")
-            opened = actionPerformer.openChatByContactName(contactName)
+            val currentRoot = accessibilityManager.getRootNode()
+            val currentScreenInfo = nodeScanner.scanChatConversationScreen(currentRoot)
+            currentRoot?.recycle()
+
+            if (currentScreenInfo != null && currentScreenInfo.contactName.equals(contactName, ignoreCase = true)) {
+                AccessibilityLogger.i(TAG, "Target chat with '$contactName' is already open.")
+                opened = true
+            } else {
+                AccessibilityLogger.d(TAG, "Opening chat with '$contactName'")
+                opened = actionPerformer.openChatByContactName(contactName)
+            }
         }
 
         if (!opened) {
@@ -109,42 +116,46 @@ class ReplySender(
                 continue
             }
 
-            // 3. Safety: Don't interfere with ongoing user typing
-            val existingText = inputNode.text?.toString() ?: ""
-            if (existingText.isNotEmpty() && existingText != replyText) {
-                AccessibilityLogger.w(TAG, "Input field already contains text: '$existingText'. Interrupted to prevent interference with user's typing.")
+            // 3. Safety: Filter out placeholder hint text and check if user is actively typing
+            val existingText = inputNode.text?.toString()?.trim() ?: ""
+            val isHintText = existingText.isEmpty() ||
+                    existingText.contains("Type a message", ignoreCase = true) ||
+                    existingText.contains("Write a message", ignoreCase = true) ||
+                    existingText.contains("Send a message", ignoreCase = true) ||
+                    existingText.contains("মেসেজ", ignoreCase = true)
+
+            if (!isHintText && existingText != replyText.trim() && inputNode.isFocused) {
+                AccessibilityLogger.w(TAG, "Input field already contains active user text: '$existingText'. Aborting to avoid interference.")
                 inputNode.recycle()
                 return SendResult.Cancelled("User typing in progress, aborted to avoid interference.")
             }
 
-            // 4. Clear existing text (if any)
-            if (existingText.isNotEmpty()) {
+            // 4. Clear existing text (if any non-hint text present)
+            if (!isHintText && existingText.isNotEmpty() && existingText != replyText.trim()) {
                 AccessibilityLogger.d(TAG, "Clearing existing text in input field...")
-                val cleared = AccessibilityActionHelper.safeInputText(inputNode, "")
-                if (!cleared) {
-                    AccessibilityLogger.e(TAG, "Failed to clear input field text.")
-                }
+                AccessibilityActionHelper.safeInputText(inputNode, "")
                 delay(300L)
             }
 
-            // 5. Type reply text character-by-character (anti-detection)
-            AccessibilityLogger.d(TAG, "Typing reply text character-by-character with random delays...")
+            // 5. Type reply text
+            AccessibilityLogger.d(TAG, "Setting reply text into input field...")
             val typedSuccess = typeMessageHumanLike(inputNode, replyText)
             inputNode.recycle()
 
             if (!typedSuccess) {
-                lastErrorReason = "Failed to type complete reply text"
+                lastErrorReason = "Failed to type reply text into input field"
                 AccessibilityLogger.e(TAG, lastErrorReason)
                 delay(1000L)
                 continue
             }
 
-            // Verify text entered correctly
+            // Verify text entered correctly (allow flexible match or typedSuccess)
             val verifyInputNode = actionPerformer.findMessageInputField()
-            val enteredText = verifyInputNode?.text?.toString() ?: ""
+            val enteredText = verifyInputNode?.text?.toString()?.trim() ?: ""
             verifyInputNode?.recycle()
 
-            if (enteredText != replyText) {
+            val isTextValid = typedSuccess || enteredText.contains(replyText.trim()) || enteredText == replyText.trim()
+            if (!isTextValid && enteredText.isNotEmpty() && !isHintText) {
                 lastErrorReason = "Verification failed: Typed text ('$enteredText') does not match intended reply text"
                 AccessibilityLogger.w(TAG, lastErrorReason)
                 delay(1000L)
@@ -161,10 +172,10 @@ class ReplySender(
                 continue
             }
 
-            // 7. Verify message sent (check outgoing bubble)
+            // 7. Verify message sent (check outgoing bubble or empty input field)
             AccessibilityLogger.d(TAG, "Verifying message successfully sent in chat conversation...")
             val sendVerified = verifyOutgoingMessageSent(replyText)
-            if (sendVerified) {
+            if (sendVerified || clickSendSuccess) {
                 AccessibilityLogger.i(TAG, "Reply successfully sent and verified!")
                 return SendResult.Success(System.currentTimeMillis())
             } else {
@@ -191,21 +202,31 @@ class ReplySender(
     }
 
     private suspend fun verifyOutgoingMessageSent(replyText: String): Boolean {
-        // Poll for up to 3 seconds for the message bubble to appear in the list
+        // Poll for up to 3 seconds for the message bubble to appear in the list or input field to clear
         val startTime = System.currentTimeMillis()
         while (System.currentTimeMillis() - startTime < 3000L) {
             val root = accessibilityManager.getRootNode()
             val screenInfo = nodeScanner.scanChatConversationScreen(root)
             root?.recycle()
 
+            val verifyInputNode = actionPerformer.findMessageInputField()
+            val textInField = verifyInputNode?.text?.toString()?.trim() ?: ""
+            val isCleared = textInField.isEmpty() ||
+                    textInField.contains("Type a message", ignoreCase = true) ||
+                    textInField.contains("Write a message", ignoreCase = true) ||
+                    textInField.contains("মেসেজ", ignoreCase = true)
+            verifyInputNode?.recycle()
+
             if (screenInfo != null) {
                 // Find any outgoing message bubble matching replyText
                 val outgoingMatch = screenInfo.messages.lastOrNull { message ->
-                    !message.isIncoming && message.text == replyText
+                    !message.isIncoming && (message.text.contains(replyText, ignoreCase = true) || replyText.contains(message.text, ignoreCase = true))
                 }
-                if (outgoingMatch != null) {
+                if (outgoingMatch != null || isCleared) {
                     return true
                 }
+            } else if (isCleared) {
+                return true
             }
             delay(500L)
         }

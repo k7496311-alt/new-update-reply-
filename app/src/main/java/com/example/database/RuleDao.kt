@@ -22,4 +22,7 @@ interface RuleDao {
 
     @Delete
     suspend fun deleteRule(rule: RuleEntity)
+
+    @Query("DELETE FROM reply_rules")
+    suspend fun deleteAllRules()
 }
