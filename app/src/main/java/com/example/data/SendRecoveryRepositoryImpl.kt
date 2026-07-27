@@ -2,6 +2,7 @@ package com.example.data
 
 import com.example.model.QueueItem
 import com.example.model.QueueStatus
+import com.example.reply.duplicate.DuplicateCheckCriteria
 import com.example.reply.duplicate.DuplicatePreventionEngine
 import com.example.reply.duplicate.DuplicatePreventionStatus
 import com.example.reply.recovery.SendRecoveryCriteria
@@ -56,10 +57,11 @@ class SendRecoveryRepositoryImpl(
 
         // Guard Requirement 2: Duplicate check - NEVER create duplicate reply
         if (duplicatePreventionEngine != null) {
-            val dupCheck = duplicatePreventionEngine.checkDuplicate(
-                replyText = replyText,
-                conversationId = conversationId,
-                packageName = criteria.packageName
+            val dupCheck = duplicatePreventionEngine.evaluate(
+                DuplicateCheckCriteria(
+                    conversationId = conversationId,
+                    replyText = replyText
+                )
             )
 
             if (dupCheck.status == DuplicatePreventionStatus.BLOCK) {
