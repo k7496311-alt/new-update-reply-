@@ -110,6 +110,8 @@ class QueueScheduler(
             return@withContext
         }
 
+        var isQueueStartedLogged = false
+
         try {
             while (isActive) {
                 // Fetch next pending or retry item in FIFO order
@@ -126,7 +128,7 @@ class QueueScheduler(
 
                     val activeCount = queueRepository.getActiveQueueCount()
                     if (activeCount == 0) {
-                        val emptyLog = "Queue Empty\nNo pending conversations remaining."
+                        val emptyLog = "Queue Empty\nAll queued conversations processed. Queue is empty."
                         Log.i(TAG, emptyLog)
                         AppLogger.info(LogCategory.QUEUE, "Queue Empty", emptyLog)
                     }
@@ -141,20 +143,32 @@ class QueueScheduler(
 
                 val nextItem = pendingItems.first()
 
-                // Log: Next Conversation
-                val nextLog = """
-                    Next Conversation
-                    Queue ID: ${nextItem.id}
-                    Sender: ${nextItem.senderName}
-                    Message: ${nextItem.incomingMessage}
-                    Status: ${nextItem.status}
+                if (!isQueueStartedLogged) {
+                    val queueStartLog = """
+                        Queue Started
+                        Total Queued Conversations: ${pendingItems.size}
+                        Initial Conversation: "${nextItem.senderName}"
+                        Order: FIFO (First-In, First-Out)
+                    """.trimIndent()
+                    Log.i(TAG, queueStartLog)
+                    AppLogger.info(LogCategory.QUEUE, "Queue Started", queueStartLog)
+                    isQueueStartedLogged = true
+                }
+
+                // Log: Conversation Started
+                val startedLog = """
+                    Conversation Started
+                    Queue ID: #${nextItem.id}
+                    Sender: "${nextItem.senderName}"
+                    Message Payload: "${nextItem.incomingMessage}"
+                    Status: PROCESSING
                 """.trimIndent()
 
-                Log.i(TAG, nextLog)
+                Log.i(TAG, startedLog)
                 AppLogger.info(
                     LogCategory.QUEUE,
-                    "Next Conversation (${nextItem.senderName})",
-                    "Queue ID: ${nextItem.id} | Sender: ${nextItem.senderName} | Message: '${nextItem.incomingMessage}'"
+                    "Conversation Started (${nextItem.senderName})",
+                    startedLog
                 )
 
                 // Transition item to PROCESSING
@@ -165,6 +179,7 @@ class QueueScheduler(
                 queueRepository.saveQueueItem(processingItem)
 
                 // Process conversation safely
+                var isSuccess = false
                 try {
                     if (executionHandler != null) {
                         executionHandler.invoke(processingItem)
@@ -172,6 +187,7 @@ class QueueScheduler(
                         // Default simulation processing time
                         delay(600L)
                     }
+                    isSuccess = true
 
                     // Successfully completed
                     val finishedItem = processingItem.copy(
@@ -218,6 +234,36 @@ class QueueScheduler(
 
                         Log.e(TAG, "Conversation failed for ${processingItem.senderName} after $MAX_RETRY_COUNT retries")
                     }
+                }
+
+                // Log: Conversation Finished
+                val finishStatus = if (isSuccess) "SENT" else "FAILED/RETRY"
+                val finishedLog = """
+                    Conversation Finished
+                    Queue ID: #${processingItem.id}
+                    Sender: "${processingItem.senderName}"
+                    Final Status: $finishStatus
+                """.trimIndent()
+                Log.i(TAG, finishedLog)
+                AppLogger.info(
+                    LogCategory.QUEUE,
+                    "Conversation Finished (${processingItem.senderName})",
+                    finishedLog
+                )
+
+                // Check remaining queue count
+                val remainingItems = queueRepository.getQueueItemsByStatuses(
+                    listOf(QueueStatus.PENDING, QueueStatus.RETRY, QueueStatus.INCOMING)
+                ).sortedBy { it.createdAt }
+
+                if (remainingItems.isNotEmpty()) {
+                    val remainingLog = """
+                        Queue Remaining
+                        Remaining Count: ${remainingItems.size}
+                        Next In Line: "${remainingItems.first().senderName}"
+                    """.trimIndent()
+                    Log.i(TAG, remainingLog)
+                    AppLogger.info(LogCategory.QUEUE, "Queue Remaining (${remainingItems.size} left)", remainingLog)
                 }
             }
         } finally {

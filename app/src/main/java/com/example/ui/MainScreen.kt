@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -25,6 +27,8 @@ sealed class NavigationItem(val route: String, val title: String, val icon: Imag
     object Rules : NavigationItem("rules", "Rules", Icons.AutoMirrored.Filled.List)
     object History : NavigationItem("history", "History", Icons.Default.History)
     object Settings : NavigationItem("settings", "Settings", Icons.Default.Settings)
+    object Debug : NavigationItem("debug", "Debug", Icons.Default.BugReport)
+    object Verification : NavigationItem("verification", "Verify", Icons.Default.CheckCircle)
     object Permission : NavigationItem("permissions", "Permissions", Icons.Default.Security)
 }
 
@@ -48,6 +52,8 @@ fun MainScreen(
         NavigationItem.Rules,
         NavigationItem.History,
         NavigationItem.Settings,
+        NavigationItem.Debug,
+        NavigationItem.Verification,
         NavigationItem.Permission
     )
 
@@ -117,6 +123,12 @@ fun MainScreen(
                     viewModel = settingsViewModel,
                     onNavigateToLogs = { navController.navigate("logs") }
                 )
+            }
+            composable(NavigationItem.Debug.route) {
+                DebugDashboardScreen()
+            }
+            composable(NavigationItem.Verification.route) {
+                com.example.verification.ProductionVerificationScreen()
             }
             composable(NavigationItem.Permission.route) {
                 PermissionScreen(viewModel = permissionViewModel)
