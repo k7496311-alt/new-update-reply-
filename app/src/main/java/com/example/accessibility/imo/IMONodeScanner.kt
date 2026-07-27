@@ -151,6 +151,49 @@ class IMONodeScanner {
             "com.imo.android.imoim:id/btn_back",
             "com.imo.android.imoimlite:id/btn_back"
         )
+        private val CONV_MESSAGE_LIST_IDS = listOf(
+            "com.imo.android.imoim:id/msg_list",
+            "com.imo.android.imoim:id/message_list",
+            "com.imo.android.imoim:id/chat_list",
+            "com.imo.android.imoim:id/recycler_view",
+            "com.imo.android.imoimlite:id/msg_list",
+            "com.imo.android.imoimlite:id/message_list",
+            "com.imo.android.imoimlite:id/chat_list",
+            "com.imo.android.imoimlite:id/recycler_view",
+            "msg_list",
+            "message_list",
+            "chat_list",
+            "recycler_view"
+        )
+        private val CONV_JUMP_LATEST_IDS = listOf(
+            "com.imo.android.imoim:id/jump_to_latest",
+            "com.imo.android.imoim:id/jump_to_bottom",
+            "com.imo.android.imoim:id/btn_jump",
+            "com.imo.android.imoim:id/fab_jump",
+            "com.imo.android.imoim:id/go_to_bottom",
+            "com.imo.android.imoim:id/scroll_down_btn",
+            "com.imo.android.imoim:id/scroll_to_bottom",
+            "com.imo.android.imoim:id/unread_btn",
+            "com.imo.android.imoim:id/btn_latest",
+            "com.imo.android.imoimlite:id/jump_to_latest",
+            "com.imo.android.imoimlite:id/jump_to_bottom",
+            "com.imo.android.imoimlite:id/btn_jump",
+            "com.imo.android.imoimlite:id/fab_jump",
+            "com.imo.android.imoimlite:id/go_to_bottom",
+            "com.imo.android.imoimlite:id/scroll_down_btn",
+            "com.imo.android.imoimlite:id/scroll_to_bottom",
+            "com.imo.android.imoimlite:id/unread_btn",
+            "com.imo.android.imoimlite:id/btn_latest",
+            "jump_to_latest",
+            "jump_to_bottom",
+            "btn_jump",
+            "fab_jump",
+            "go_to_bottom",
+            "scroll_down_btn",
+            "scroll_to_bottom",
+            "unread_btn",
+            "btn_latest"
+        )
     }
 
     /**
@@ -451,6 +494,39 @@ class IMONodeScanner {
             ?: findFirstByCriteria(root) { it.isClickable && (it.contentDescription?.toString()?.contains("back", ignoreCase = true) == true || it.contentDescription?.toString()?.contains("navigate up", ignoreCase = true) == true) }
     }
 
+    fun findMessageListContainer(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (root == null) return null
+        // 1. Direct ID match
+        val directMatch = findNodeByMultipleIds(root, CONV_MESSAGE_LIST_IDS)
+        if (directMatch != null) return directMatch
+
+        // 2. Class name heuristic match (RecyclerView, ListView, AbsListView, ScrollView)
+        return findFirstByCriteria(root) { node ->
+            val className = node.className?.toString() ?: ""
+            val resId = node.viewIdResourceName ?: ""
+            val isListClass = className.contains("RecyclerView", ignoreCase = true) ||
+                    className.contains("ListView", ignoreCase = true) ||
+                    className.contains("ScrollView", ignoreCase = true)
+            val isListResId = resId.contains("list", ignoreCase = true) ||
+                    resId.contains("recycler", ignoreCase = true) ||
+                    resId.contains("chat", ignoreCase = true)
+            (isListClass || (node.isScrollable && isListResId)) && node.isVisibleToUser
+        }
+    }
+
+    fun findScrollableContainer(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (root == null) return null
+        val listContainer = findMessageListContainer(root)
+        if (listContainer != null && listContainer.isScrollable) {
+            return listContainer
+        }
+        listContainer?.recycle()
+
+        return findFirstByCriteria(root) { node ->
+            node.isScrollable && node.isVisibleToUser
+        }
+    }
+
     fun findHeaderName(root: AccessibilityNodeInfo?): String? {
         if (root == null) return null
         val node = findNodeByMultipleIds(root, CONV_HEADER_NAME_IDS)
@@ -464,6 +540,61 @@ class IMONodeScanner {
         // IMO voice-to-text button is typically an "A" icon or a button near the audio bubble
         return findFirstByCriteria(root) { 
             it.isClickable && (it.text?.toString() == "A" || it.contentDescription?.toString()?.contains("transcribe", ignoreCase = true) == true || it.viewIdResourceName?.contains("voice_to_text") == true)
+        }
+    }
+
+    fun findJumpToLatestButton(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (root == null) return null
+
+        // 1. Check known view ID matches
+        val directMatch = findNodeByMultipleIds(root, CONV_JUMP_LATEST_IDS)
+        if (directMatch != null && directMatch.isVisibleToUser) {
+            return directMatch
+        }
+        directMatch?.recycle()
+
+        // 2. Search entire accessibility tree using node properties:
+        // AccessibilityNodeInfo, ContentDescription, Clickable, Visible, Bounds
+        return findFirstByCriteria(root) { node ->
+            if (!node.isVisibleToUser) return@findFirstByCriteria false
+
+            val desc = node.contentDescription?.toString() ?: ""
+            val text = node.text?.toString() ?: ""
+            val resId = node.viewIdResourceName ?: ""
+            val className = node.className?.toString() ?: ""
+
+            val descMatch = desc.contains("jump", ignoreCase = true) ||
+                    desc.contains("latest", ignoreCase = true) ||
+                    desc.contains("bottom", ignoreCase = true) ||
+                    desc.contains("scroll down", ignoreCase = true) ||
+                    desc.contains("new message", ignoreCase = true) ||
+                    desc.contains("unread", ignoreCase = true)
+
+            val textMatch = text.contains("jump", ignoreCase = true) ||
+                    text.contains("latest", ignoreCase = true) ||
+                    text.contains("bottom", ignoreCase = true) ||
+                    text.contains("down", ignoreCase = true) ||
+                    text.contains("unread", ignoreCase = true)
+
+            val idMatch = resId.contains("jump", ignoreCase = true) ||
+                    resId.contains("bottom", ignoreCase = true) ||
+                    resId.contains("latest", ignoreCase = true) ||
+                    resId.contains("scroll_down", ignoreCase = true) ||
+                    resId.contains("unread", ignoreCase = true)
+
+            val isClickableOrParent = node.isClickable || (node.parent?.isClickable == true)
+
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            // Floating Jump button bounds heuristic: valid non-empty rect in lower half/center
+            val hasValidBounds = bounds.width() in 15..500 && bounds.height() in 15..500 && bounds.top > 100
+
+            val isFloatingClass = className.contains("FloatingActionButton", ignoreCase = true) ||
+                    className.contains("ImageButton", ignoreCase = true) ||
+                    className.contains("ImageView", ignoreCase = true) ||
+                    className.contains("Button", ignoreCase = true)
+
+            isClickableOrParent && hasValidBounds && (descMatch || textMatch || idMatch || (isFloatingClass && (idMatch || descMatch)))
         }
     }
 

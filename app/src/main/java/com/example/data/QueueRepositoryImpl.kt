@@ -35,6 +35,10 @@ class QueueRepositoryImpl(
         return queueDao.findDuplicate(packageName, senderName, incomingMessage)?.toDomainModel()
     }
 
+    override suspend fun findActiveQueueItemBySender(packageName: String, senderName: String): QueueItem? {
+        return queueDao.findActiveQueueItemBySender(packageName, senderName)?.toDomainModel()
+    }
+
     override suspend fun getQueueItemById(id: Long): QueueItem? {
         return queueDao.getQueueItemById(id)?.toDomainModel()
     }

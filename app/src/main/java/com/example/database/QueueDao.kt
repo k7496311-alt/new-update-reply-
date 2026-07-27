@@ -20,6 +20,9 @@ interface QueueDao {
     @Query("SELECT * FROM reply_queue WHERE packageName = :packageName AND senderName = :senderName AND incomingMessage = :incomingMessage AND status IN ('INCOMING', 'PENDING', 'PROCESSING', 'RETRY') LIMIT 1")
     suspend fun findDuplicate(packageName: String, senderName: String, incomingMessage: String): QueueEntity?
 
+    @Query("SELECT * FROM reply_queue WHERE packageName = :packageName AND senderName = :senderName AND status IN ('INCOMING', 'PENDING', 'PROCESSING', 'RETRY', 'COOLDOWN') ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun findActiveQueueItemBySender(packageName: String, senderName: String): QueueEntity?
+
     @Query("SELECT * FROM reply_queue WHERE id = :id LIMIT 1")
     suspend fun getQueueItemById(id: Long): QueueEntity?
 
