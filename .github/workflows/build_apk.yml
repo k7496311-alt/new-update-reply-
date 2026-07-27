@@ -23,22 +23,33 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+          cache-disabled: true
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew || true
+      - name: Create .env File
+        run: |
+          if [ ! -f ".env" ]; then
+            if [ -f ".env.example" ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
+          fi
 
-      - name: Decode Debug Keystore
+      - name: Setup Debug Keystore
         run: |
           if [ -f "debug.keystore.base64" ]; then
             (base64 -d debug.keystore.base64 > debug.keystore) 2>/dev/null || (base64 --decode debug.keystore.base64 > debug.keystore) 2>/dev/null || true
-            echo "Decoded debug.keystore successfully"
           fi
+          if [ ! -s "debug.keystore" ]; then
+            echo "Generating fresh debug.keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          echo "debug.keystore ready."
 
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
@@ -49,3 +60,4 @@ jobs:
           name: SmartAutoReply-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
