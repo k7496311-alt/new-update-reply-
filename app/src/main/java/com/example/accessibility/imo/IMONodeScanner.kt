@@ -53,8 +53,10 @@ class IMONodeScanner {
     companion object {
         private const val TAG = "IMONodeScanner"
 
-        // Known IMO & IMO Lite package names
+        // Known IMO & IMO variants package names
         const val PACKAGE_IMO = "com.imo.android.imoim"
+        const val PACKAGE_IMO_BETA = "com.imo.android.imoim.beta"
+        const val PACKAGE_IMO_HD = "com.imo.android.imoimhd"
         const val PACKAGE_IMO_LITE = "com.imo.android.imoimlite"
 
         fun isImoPackage(packageName: String): Boolean {
@@ -63,93 +65,123 @@ class IMONodeScanner {
                    packageName.contains("imo", ignoreCase = true)
         }
 
-        // View IDs (with package-relative suffixes)
+        // View IDs (with package-relative suffixes and short IDs)
         private val CHAT_LIST_CONTACT_NAME_IDS = listOf(
             "com.imo.android.imoim:id/name",
+            "com.imo.android.imoim.beta:id/name",
             "com.imo.android.imoimlite:id/name",
             "name",
             "com.imo.android.imoim:id/title",
-            "com.imo.android.imoimlite:id/title"
+            "com.imo.android.imoim.beta:id/title",
+            "com.imo.android.imoimlite:id/title",
+            "title"
         )
         private val CHAT_LIST_PREVIEW_IDS = listOf(
             "com.imo.android.imoim:id/msg",
+            "com.imo.android.imoim.beta:id/msg",
             "com.imo.android.imoimlite:id/msg",
             "msg",
             "com.imo.android.imoim:id/subtitle",
-            "com.imo.android.imoimlite:id/subtitle"
+            "com.imo.android.imoim.beta:id/subtitle",
+            "com.imo.android.imoimlite:id/subtitle",
+            "subtitle"
         )
         private val CHAT_LIST_TIME_IDS = listOf(
             "com.imo.android.imoim:id/time",
+            "com.imo.android.imoim.beta:id/time",
             "com.imo.android.imoimlite:id/time",
             "time"
         )
         private val CHAT_LIST_BADGE_IDS = listOf(
             "com.imo.android.imoim:id/badge",
+            "com.imo.android.imoim.beta:id/badge",
             "com.imo.android.imoimlite:id/badge",
             "badge",
             "com.imo.android.imoim:id/unread_count",
-            "com.imo.android.imoimlite:id/unread_count"
+            "com.imo.android.imoim.beta:id/unread_count",
+            "com.imo.android.imoimlite:id/unread_count",
+            "unread_count"
         )
 
         private val CONV_INPUT_IDS = listOf(
             "com.imo.android.imoim:id/edit_text",
+            "com.imo.android.imoim.beta:id/edit_text",
+            "com.imo.android.imoimlite:id/edit_text",
             "com.imo.android.imoim:id/et_message",
+            "com.imo.android.imoim.beta:id/et_message",
             "com.imo.android.imoim:id/chat_input",
+            "com.imo.android.imoim.beta:id/chat_input",
             "com.imo.android.imoim:id/input_box",
+            "com.imo.android.imoim.beta:id/input_box",
             "com.imo.android.imoim:id/message_edit",
+            "com.imo.android.imoim.beta:id/message_edit",
             "com.imo.android.imoim:id/message_input",
+            "com.imo.android.imoim.beta:id/message_input",
             "com.imo.android.imoim:id/text_input",
             "com.imo.android.imoim:id/input",
             "com.imo.android.imoim:id/msg_edit",
-            "com.imo.android.imoimlite:id/edit_text",
-            "com.imo.android.imoimlite:id/et_message",
-            "com.imo.android.imoimlite:id/input_box",
-            "com.imo.android.imoimlite:id/chat_input",
-            "com.imo.android.imoimlite:id/input",
             "edit_text",
+            "et_message",
+            "chat_input",
+            "input_box",
+            "message_edit",
+            "message_input",
+            "text_input",
             "input",
             "msg_edit"
         )
         private val CONV_SEND_IDS = listOf(
             "com.imo.android.imoim:id/send",
+            "com.imo.android.imoim.beta:id/send",
+            "com.imo.android.imoimlite:id/send",
             "com.imo.android.imoim:id/btn_send",
+            "com.imo.android.imoim.beta:id/btn_send",
             "com.imo.android.imoim:id/send_btn",
+            "com.imo.android.imoim.beta:id/send_btn",
             "com.imo.android.imoim:id/iv_send",
+            "com.imo.android.imoim.beta:id/iv_send",
+            "com.imo.android.imoim:id/v_send",
+            "com.imo.android.imoim.beta:id/v_send",
             "com.imo.android.imoim:id/image_send",
             "com.imo.android.imoim:id/send_button",
             "com.imo.android.imoim:id/send_icon",
             "com.imo.android.imoim:id/chat_send",
-            "com.imo.android.imoim:id/v_send",
             "com.imo.android.imoim:id/right_btn",
-            "com.imo.android.imoimlite:id/send",
-            "com.imo.android.imoimlite:id/btn_send",
-            "com.imo.android.imoimlite:id/send_btn",
-            "com.imo.android.imoimlite:id/iv_send",
-            "com.imo.android.imoimlite:id/send_button",
+            "com.imo.android.imoim.beta:id/right_btn",
             "send",
             "btn_send",
-            "send_btn"
+            "send_btn",
+            "iv_send",
+            "v_send",
+            "right_btn",
+            "send_button",
+            "send_icon"
         )
         private val CONV_MIC_IDS = listOf(
             "com.imo.android.imoim:id/mic",
+            "com.imo.android.imoim.beta:id/mic",
             "com.imo.android.imoimlite:id/mic",
             "mic",
             "com.imo.android.imoim:id/voice",
-            "com.imo.android.imoimlite:id/voice"
+            "com.imo.android.imoim.beta:id/voice",
+            "voice"
         )
         private val CONV_HEADER_NAME_IDS = listOf(
             "com.imo.android.imoim:id/chat_title",
+            "com.imo.android.imoim.beta:id/chat_title",
             "com.imo.android.imoimlite:id/chat_title",
             "chat_title",
             "com.imo.android.imoim:id/title",
-            "com.imo.android.imoimlite:id/title"
+            "com.imo.android.imoim.beta:id/title",
+            "title"
         )
         private val CONV_BACK_IDS = listOf(
             "com.imo.android.imoim:id/back",
+            "com.imo.android.imoim.beta:id/back",
             "com.imo.android.imoimlite:id/back",
             "back",
             "com.imo.android.imoim:id/btn_back",
-            "com.imo.android.imoimlite:id/btn_back"
+            "btn_back"
         )
         private val CONV_MESSAGE_LIST_IDS = listOf(
             "com.imo.android.imoim:id/msg_list",
@@ -430,7 +462,18 @@ class IMONodeScanner {
             ?: findFirstByCriteria(root) { node ->
                 val className = node.className?.toString() ?: ""
                 val resId = node.viewIdResourceName ?: ""
-                (node.isEditable || className.contains("EditText", ignoreCase = true) || resId.contains("edit", ignoreCase = true) || resId.contains("input", ignoreCase = true)) && node.isEnabled
+                val text = node.text?.toString() ?: ""
+                val desc = node.contentDescription?.toString() ?: ""
+
+                val isEditClass = node.isEditable || className.contains("EditText", ignoreCase = true)
+                val isEditId = resId.contains("edit", ignoreCase = true) || 
+                               resId.contains("input", ignoreCase = true) || 
+                               resId.contains("msg", ignoreCase = true)
+                val isMessageHint = text.contains("Message", ignoreCase = true) || 
+                                    text.contains("মেসেজ", ignoreCase = true) || 
+                                    desc.contains("Message", ignoreCase = true)
+
+                (isEditClass || (isEditId && isMessageHint)) && node.isEnabled
             }
     }
 
@@ -446,17 +489,19 @@ class IMONodeScanner {
             val text = node.text?.toString() ?: ""
             val desc = node.contentDescription?.toString() ?: ""
             val resId = node.viewIdResourceName ?: ""
-            (node.isClickable || node.isCheckable) && (
+            val isClickableOrParent = node.isClickable || node.parent?.isClickable == true
+            isClickableOrParent && (
                 text.contains("Send", ignoreCase = true) ||
                 text.contains("পাঠান", ignoreCase = true) ||
                 desc.contains("Send", ignoreCase = true) ||
                 desc.contains("পাঠান", ignoreCase = true) ||
-                resId.contains("send", ignoreCase = true)
+                resId.contains("send", ignoreCase = true) ||
+                resId.contains("v_send", ignoreCase = true)
             )
         }
         if (textMatch != null) return textMatch
 
-        // 3. Relative positioning fallback: Find button situated to the right of the input field
+        // 3. Relative positioning fallback: Find button situated to the right of the input field in the bottom bar
         val inputField = findInputField(root)
         if (inputField != null) {
             val inputBounds = Rect()
@@ -465,14 +510,16 @@ class IMONodeScanner {
 
             if (inputBounds.width() > 0) {
                 return findFirstByCriteria(root) { node ->
-                    if (!node.isClickable && node.parent?.isClickable != true) return@findFirstByCriteria false
+                    val isClickableOrParent = node.isClickable || (node.parent?.isClickable == true)
+                    if (!isClickableOrParent) return@findFirstByCriteria false
+                    
                     val nodeBounds = Rect()
                     node.getBoundsInScreen(nodeBounds)
 
-                    // Must be situated to the right of the input field and in the same horizontal bar
+                    // Must be situated to the right of the input field or near right edge of the bottom row
                     val isToRight = nodeBounds.left >= (inputBounds.right - 120) || nodeBounds.centerX() > inputBounds.centerX()
-                    val isInSameRow = nodeBounds.top >= (inputBounds.top - 150) && nodeBounds.bottom <= (inputBounds.bottom + 150)
-                    val isSmallIcon = nodeBounds.width() in 15..350 && nodeBounds.height() in 15..350
+                    val isInSameRow = nodeBounds.top >= (inputBounds.top - 200) && nodeBounds.bottom <= (inputBounds.bottom + 200)
+                    val isSmallIcon = nodeBounds.width() in 15..400 && nodeBounds.height() in 15..400
 
                     isToRight && isInSameRow && isSmallIcon
                 }

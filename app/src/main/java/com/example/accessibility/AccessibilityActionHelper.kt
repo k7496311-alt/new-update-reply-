@@ -39,10 +39,10 @@ object AccessibilityActionHelper {
     }
 
     /**
-     * Safely inputs text into an editable node using ACTION_SET_TEXT.
+     * Safely inputs text into an editable node using ACTION_SET_TEXT, selection setting, and paste triggers.
      * Returns true if successful.
      */
-    fun safeInputText(node: AccessibilityNodeInfo?, text: String): Boolean {
+    fun safeInputText(node: AccessibilityNodeInfo?, text: String, context: android.content.Context? = null): Boolean {
         if (node == null) {
             AccessibilityLogger.w(CATEGORY, "safeInputText: Node is null")
             return false
@@ -77,9 +77,49 @@ object AccessibilityActionHelper {
         }
 
         if (success) {
+            // Set selection to end of text to trigger TextWatcher updates
+            try {
+                val selectionArgs = Bundle().apply {
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, text.length)
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, text.length)
+                }
+                node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArgs)
+            } catch (e: Exception) {
+                // Ignore selection error
+            }
+
+            // Copy to clipboard and perform PASTE if context is available, to ensure UI TextWatcher fires
+            if (context != null && text.isNotEmpty()) {
+                try {
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                    if (clipboard != null) {
+                        val clip = android.content.ClipData.newPlainText("AutoReplyText", text)
+                        clipboard.setPrimaryClip(clip)
+                        node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                    }
+                } catch (e: Exception) {
+                    AccessibilityLogger.w(CATEGORY, "Clipboard paste fallback note: ${e.message}")
+                }
+            }
+
             AccessibilityLogger.d(CATEGORY, "Safely input text: \"$text\" into ${node.viewIdResourceName}")
         } else {
-            AccessibilityLogger.e(CATEGORY, "Failed to set text via ACTION_SET_TEXT on ${node.viewIdResourceName}")
+            // Try clipboard paste as direct primary input
+            if (context != null && text.isNotEmpty()) {
+                try {
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                    if (clipboard != null) {
+                        val clip = android.content.ClipData.newPlainText("AutoReplyText", text)
+                        clipboard.setPrimaryClip(clip)
+                        success = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                    }
+                } catch (e: Exception) {
+                    AccessibilityLogger.e(CATEGORY, "Clipboard paste failed: ${e.message}")
+                }
+            }
+            if (!success) {
+                AccessibilityLogger.e(CATEGORY, "Failed to set text via ACTION_SET_TEXT on ${node.viewIdResourceName}")
+            }
         }
         return success
     }

@@ -303,9 +303,28 @@ class ReplyOrchestrator(
 
                     // Step 3: Analyze the last message content in the conversation thread
                     stateMachine.transitionTo(OrchestratorState.ANALYZING_MESSAGE)
-                    val lastMessageType = uiManager.getActionPerformer().detectLastMessageType()
-
+                    var lastMessageType = uiManager.getActionPerformer().detectLastMessageType()
                     var resolvedText = originalText
+
+                    // Poll for up to 3.5s to read actual incoming message text directly from chat screen
+                    val pollStartTime = System.currentTimeMillis()
+                    while (System.currentTimeMillis() - pollStartTime < 3500L) {
+                        val rootNode = uiManager.getAccessibilityManager().getRootNode()
+                        val screenInfo = uiManager.getNodeScanner().scanChatConversationScreen(rootNode)
+                        rootNode?.recycle()
+
+                        val lastIncoming = screenInfo?.messages?.lastOrNull { it.isIncoming && it.text.isNotBlank() }
+                        if (lastIncoming != null) {
+                            lastMessageType = lastIncoming.messageType
+                            if (!lastIncoming.text.equals("You have a new message", ignoreCase = true) &&
+                                !lastIncoming.text.equals("New message", ignoreCase = true)) {
+                                resolvedText = lastIncoming.text
+                                AccessibilityLogger.i(TAG, "Extracted real incoming message from chat screen: '$resolvedText'")
+                                break
+                            }
+                        }
+                        delay(500L)
+                    }
 
                     // Step 4: Check Voice Message vs Media vs Text
                     if (IMOMessageClassifier.isVoiceMessage(originalText, lastMessageType)) {

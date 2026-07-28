@@ -164,7 +164,19 @@ class ReplySender(
 
             // 6. Find and click Send button
             AccessibilityLogger.d(TAG, "Clicking Send button...")
-            val clickSendSuccess = actionPerformer.clickSendButton()
+            var clickSendSuccess = actionPerformer.clickSendButton()
+            if (!clickSendSuccess) {
+                AccessibilityLogger.w(TAG, "Send button click initial attempt failed. Retrying after refreshing input focus...")
+                delay(300L)
+                val retryInputNode = actionPerformer.findMessageInputField()
+                if (retryInputNode != null) {
+                    AccessibilityActionHelper.safeInputText(retryInputNode, replyText, context)
+                    retryInputNode.recycle()
+                    delay(300L)
+                }
+                clickSendSuccess = actionPerformer.clickSendButton()
+            }
+
             if (!clickSendSuccess) {
                 lastErrorReason = "Failed to click send button or send button not visible"
                 AccessibilityLogger.w(TAG, lastErrorReason)
@@ -196,7 +208,7 @@ class ReplySender(
 
     private suspend fun typeMessageHumanLike(inputNode: AccessibilityNodeInfo, text: String): Boolean {
         if (checkUserInterference()) return false
-        val success = AccessibilityActionHelper.safeInputText(inputNode, text)
+        val success = AccessibilityActionHelper.safeInputText(inputNode, text, context)
         delay(150L) // Brief delay for IME input field sync
         return success
     }
